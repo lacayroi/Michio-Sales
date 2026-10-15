@@ -1,0 +1,81 @@
+# Dev / single-VPS stack (SPEC 14.2). `docker compose up` builds the apps, migrates,
+# seeds demo data on an empty database, then starts web + worker.
+# Infra only (for `pnpm dev` on the host): `pnpm infra:up`.
+name: michio-sales-hub
+
+x-app-env: &app-env
+  NODE_ENV: production
+  DATABASE_URL: postgresql://michio:michio@postgres:5432/michio_sales
+  REDIS_URL: redis://redis:6379
+  S3_ENDPOINT: http://s3:9000
+  TZ: Asia/Ho_Chi_Minh
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: michio
+      POSTGRES_PASSWORD: michio
+      POSTGRES_DB: michio_sales
+    ports: ['127.0.0.1:5432:5432']
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U michio -d michio_sales']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--appendonly', 'yes']
+    ports: ['127.0.0.1:6379:6379']
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # S3-compatible storage for quote PDFs & images (SPEC 4.1). MinIO images are no longer
+  # published on Docker Hub, so dev uses SeaweedFS; production may use any S3 service.
+  s3:
+    image: chrislusf/seaweedfs:4.48
+    command: ['server', '-dir=/data', '-s3', '-s3.port=9000', '-s3.config=/etc/seaweedfs/s3.json']
+    ports: ['127.0.0.1:9000:9000']
+    volumes: [s3data:/data, ./infra/s3.json:/etc/seaweedfs/s3.json:ro]
+
+  migrate:
+    build: { context: ., target: tools }
+    env_file: [{ path: .env, required: false }]
+    environment:
+      <<: *app-env
+      NODE_ENV: development # the demo seed refuses to run in production
+      SEED_IF_EMPTY: '1'
+    command: ['sh', '-c', 'pnpm --filter @michio/db exec prisma migrate deploy && pnpm --filter @michio/db exec tsx prisma/seed.ts']
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  web:
+    build: { context: ., target: web }
+    env_file: [{ path: .env, required: false }]
+    environment:
+      <<: *app-env
+      SESSION_SECRET: ${SESSION_SECRET:-dev-only-session-secret-change-me}
+    ports: ['3000:3000']
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  worker:
+    build: { context: ., target: tools }
+    env_file: [{ path: .env, required: false }]
+    environment: *app-env
+    command: ['pnpm', '--filter', '@michio/worker', 'start']
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  redisdata:
+  s3data:

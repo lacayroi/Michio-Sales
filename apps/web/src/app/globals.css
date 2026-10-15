@@ -1,0 +1,73 @@
+@import 'tailwindcss';
+@import '@fontsource/be-vietnam-pro/400.css';
+@import '@fontsource/be-vietnam-pro/500.css';
+@import '@fontsource/be-vietnam-pro/600.css';
+@import '@fontsource/be-vietnam-pro/700.css';
+
+/* Brand tokens (SPEC 10.1). See docs/DECISIONS.md D-006 for the contrast-driven variants. */
+:root {
+  --brand-green: #00a651;
+  --brand-green-dark: #008c44;
+  --brand-red: #e3262e;
+  --neutral-900: #1f2933;
+  --neutral-50: #f7f8f7;
+
+  --background: var(--neutral-50);
+  --foreground: var(--neutral-900);
+  --surface: #ffffff;
+  --muted: #eef1ee;
+  --muted-foreground: #5b6670;
+  --border: #dde3de;
+  --primary: #007f3e; /* white text 5.1:1 (AA) */
+  --primary-hover: #006b34;
+  --primary-foreground: #ffffff;
+  --accent: var(--brand-red); /* white text 4.6:1 */
+  --accent-foreground: #ffffff;
+  --accent-text: #c81e25; /* red text on light background 5.4:1 */
+  --ring: var(--brand-green);
+  --header: var(--brand-green);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --background: #111714;
+    --foreground: #e8ece9;
+    --surface: #18201c;
+    --muted: #222c27;
+    --muted-foreground: #9aa6a0;
+    --border: #2c3832;
+    --primary: var(--brand-green); /* dark text on green 5.7:1 */
+    --primary-hover: #12b862;
+    --primary-foreground: #04140b;
+    --accent: #e3262e;
+    --accent-foreground: #ffffff;
+    --accent-text: #ff6b70;
+    --ring: var(--brand-green);
+    --header: #0c3d24;
+  }
+}
+
+@theme inline {
+  --font-sans: 'Be Vietnam Pro', ui-sans-serif, system-ui, sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-text: var(--accent-text);
+  --color-ring: var(--ring);
+  --color-header: var(--header);
+  --color-brand-green: var(--brand-green);
+  --color-brand-red: var(--brand-red);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}

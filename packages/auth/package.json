@@ -1,0 +1,22 @@
+{
+  "name": "@michio/auth",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./permissions": "./src/permissions.ts",
+    "./session": "./src/session.ts"
+  },
+  "scripts": {
+    "lint": "eslint src",
+    "typecheck": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@michio/db": "workspace:*",
+    "@michio/shared": "workspace:*",
+    "@node-rs/argon2": "^2.2.2",
+    "jose": "^6.2.12"
+  }
+}

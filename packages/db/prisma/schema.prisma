@@ -1,0 +1,824 @@
+// Source of truth: SPEC.md §7. Deviations are recorded in docs/DECISIONS.md.
+// Every table has orgId/createdAt/updatedAt per §7 unless the spec model omits them.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  timezone  String   @default("Asia/Ho_Chi_Minh")
+  profile   Json? // địa chỉ, hotline, website, mst, logoUrl — dùng cho PDF
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum Role {
+  OWNER
+  MANAGER
+  SALES
+  SUPPORT
+  VIEWER
+}
+
+enum UserStatus {
+  AVAILABLE
+  BUSY
+  OFF
+  INACTIVE
+}
+
+model User {
+  id            String     @id @default(cuid())
+  orgId         String
+  email         String
+  phone         String?
+  fullName      String
+  passwordHash  String
+  role          Role
+  status        UserStatus @default(AVAILABLE)
+  maxOpenLeads  Int        @default(40)
+  zaloBotChatId String?    @unique
+  lastLoginAt   DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  deletedAt     DateTime?
+
+  teamMemberships   TeamMember[]
+  leaves            UserLeave[]
+  ownedCustomers    Customer[]       @relation("CustomerOwner")
+  ownedLeads        Lead[]           @relation("LeadOwner")
+  assignments       LeadAssignment[] @relation("AssignmentUser")
+  ownedDeals        Deal[]           @relation("DealOwner")
+  ownedQuotes       Quote[]          @relation("QuoteOwner")
+  ownedOrders       Order[]          @relation("OrderOwner")
+  assignedTasks     Task[]           @relation("TaskAssignee")
+  sentMessages      Message[]        @relation("MessageSender")
+  targets           Target[]
+  notifications     Notification[]
+  botLinkCodes      BotLinkCode[]
+
+  @@unique([orgId, email])
+  @@index([orgId, phone])
+}
+
+model Team {
+  // v1 có 1 đội "Kinh doanh sỉ"; giữ để mở rộng
+  id      String       @id @default(cuid())
+  orgId   String
+  name    String
+  members TeamMember[]
+}
+
+model TeamMember {
+  teamId String
+  userId String
+  weight Int    @default(1)
+  team   Team   @relation(fields: [teamId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@id([teamId, userId])
+}
+
+model UserLeave {
+  id      String   @id @default(cuid())
+  userId  String
+  startAt DateTime
+  endAt   DateTime
+  reason  String?
+  user    User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, startAt])
+}
+
+model WorkingCalendar {
+  id     String @id @default(cuid())
+  orgId  String @unique
+  weekly Json // [{dow:1..6, ranges:[["08:00","12:00"],["13:30","17:30"]]}]; dow 0 (CN) không có
+}
+
+model Holiday {
+  id    String   @id @default(cuid())
+  orgId String
+  date  DateTime @db.Date
+  name  String
+
+  @@unique([orgId, date])
+}
+
+enum ChannelType {
+  FACEBOOK_PAGE
+  ZALO_COMPANY
+  ZALO_BOT
+  ZALO_OA
+  WEBSITE
+  WOOCOMMERCE
+}
+
+enum ChannelStatus {
+  ACTIVE
+  DISCONNECTED
+  ERROR
+  DISABLED
+}
+
+model ChannelAccount {
+  id                   String        @id @default(cuid())
+  orgId                String
+  type                 ChannelType
+  name                 String // "Facebook Michio", "Zalo công ty 0337850791"
+  externalId           String // page_id / zalo uid / bot id / site url
+  status               ChannelStatus @default(ACTIVE)
+  credentials          Bytes? // JSON mã hóa AES-256-GCM
+  tokenExpiresAt       DateTime?
+  riskAcknowledgedById String? // bắt buộc với ZALO_COMPANY chế độ B
+  meta                 Json?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  identities    CustomerIdentity[]
+  conversations Conversation[]
+
+  @@unique([orgId, type, externalId])
+}
+
+enum BusinessModel {
+  JAPAN_STORE
+  ONLINE_SHOP
+  MINIMART
+  RETAIL_AGENT
+  CAFE
+  DISTRIBUTOR
+  OTHER
+}
+
+enum OrderBand {
+  LT_5M
+  B5_10M
+  B10_30M
+  B30_50M
+  GT_50M
+  UNKNOWN
+}
+
+enum Lifecycle {
+  PROSPECT
+  NEW_CUSTOMER
+  REPEAT
+  AT_RISK
+  DORMANT
+}
+
+model Customer {
+  // = khách sỉ (shop/doanh nghiệp) + người liên hệ chính
+  id                 String         @id @default(cuid())
+  orgId              String
+  contactName        String
+  phone              String? // E.164
+  email              String?
+  shopName           String?
+  taxCode            String?
+  businessModel      BusinessModel?
+  expectedOrderBand  OrderBand?
+  interestCategories String[]
+  province           String?
+  address            String?
+  facebookUrl        String?
+  zaloPhone          String?
+  avatarUrl          String?
+  tier               String? // SI_1 | SI_2 | DAI_LY ...
+  priceListId        String?
+  ownerId            String? // sales phụ trách
+  lifecycle          Lifecycle      @default(PROSPECT)
+  firstOrderAt       DateTime?
+  lastOrderAt        DateTime?
+  orderCount         Int            @default(0)
+  totalRevenue       Decimal        @default(0) @db.Decimal(18, 0)
+  reorderCycleDays   Int            @default(30)
+  reorderCycleLocked Boolean        @default(false)
+  nextReorderAt      DateTime?
+  tags               String[]
+  note               String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  deletedAt          DateTime?
+
+  owner         User?              @relation("CustomerOwner", fields: [ownerId], references: [id])
+  priceList     PriceList?         @relation(fields: [priceListId], references: [id])
+  identities    CustomerIdentity[]
+  leads         Lead[]
+  conversations Conversation[]
+  deals         Deal[]
+  quotes        Quote[]
+  orders        Order[]
+  tasks         Task[]
+  activities    Activity[]
+
+  @@index([orgId, phone])
+  @@index([orgId, email])
+  @@index([orgId, ownerId, lifecycle])
+  @@index([orgId, nextReorderAt])
+}
+
+model CustomerIdentity {
+  id               String         @id @default(cuid())
+  customerId       String
+  channelAccountId String
+  externalUserId   String // PSID / zalo uid
+  displayName      String?
+  customer         Customer       @relation(fields: [customerId], references: [id])
+  channelAccount   ChannelAccount @relation(fields: [channelAccountId], references: [id])
+
+  @@unique([channelAccountId, externalUserId])
+  @@index([customerId])
+}
+
+enum LeadSource {
+  WEBSITE_WHOLESALE_FORM
+  WEBSITE_AGENT_FORM
+  FACEBOOK_MESSENGER
+  FACEBOOK_LEAD_ADS
+  ZALO_COMPANY
+  ZALO_OA
+  HOTLINE
+  REFERRAL
+  IMPORT
+  MANUAL
+  OTHER
+}
+
+enum LeadStatus {
+  NEW
+  UNASSIGNED
+  ASSIGNED
+  IN_PROGRESS
+  WON
+  LOST
+}
+
+enum Priority {
+  HOT
+  WARM
+  COLD
+}
+
+model Lead {
+  id                   String     @id @default(cuid())
+  code                 Int // số ngắn tăng dần theo org, dùng cho lệnh bot
+  orgId                String
+  customerId           String
+  source               LeadSource
+  isRepurchase         Boolean    @default(false)
+  campaign             String?
+  utm                  Json?
+  formPayload          Json? // dữ liệu gốc từ form/lead ads
+  status               LeadStatus @default(NEW)
+  priority             Priority   @default(COLD)
+  need                 String?
+  ownerId              String?
+  firstAssignedAt      DateTime?
+  acceptedAt           DateTime?
+  firstContactAt       DateTime?
+  firstContactDeadline DateTime?
+  lastActivityAt       DateTime?
+  reassignCount        Int        @default(0)
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+  deletedAt            DateTime?
+
+  customer      Customer         @relation(fields: [customerId], references: [id])
+  owner         User?            @relation("LeadOwner", fields: [ownerId], references: [id])
+  assignments   LeadAssignment[]
+  conversations Conversation[]
+  deals         Deal[]
+  tasks         Task[]
+  activities    Activity[]
+
+  @@unique([orgId, code])
+  @@index([orgId, ownerId, status])
+  @@index([orgId, status, createdAt])
+  @@index([customerId])
+}
+
+enum AssignmentStatus {
+  PENDING
+  ACCEPTED
+  RETURNED
+  EXPIRED
+  REASSIGNED
+}
+
+enum AssignmentMethod {
+  ROUND_ROBIN
+  WEIGHTED
+  LEAST_LOADED
+  MANUAL
+  TRANSFER
+  CUSTOMER_OWNER
+  PREVIOUS_OWNER
+}
+
+model LeadAssignment {
+  id             String           @id @default(cuid())
+  leadId         String
+  userId         String
+  ruleId         String?
+  method         AssignmentMethod
+  status         AssignmentStatus @default(PENDING)
+  assignedById   String?
+  acceptDeadline DateTime?
+  respondedAt    DateTime?
+  returnReason   String?
+  createdAt      DateTime         @default(now())
+
+  lead Lead            @relation(fields: [leadId], references: [id])
+  user User            @relation("AssignmentUser", fields: [userId], references: [id])
+  rule AssignmentRule? @relation(fields: [ruleId], references: [id])
+
+  @@index([leadId])
+  @@index([userId, status])
+  @@index([status, acceptDeadline])
+}
+
+enum FallbackAction {
+  NEXT_RULE
+  QUEUE
+}
+
+model AssignmentRule {
+  id                     String           @id @default(cuid())
+  orgId                  String
+  name                   String
+  priority               Int
+  isActive               Boolean          @default(true)
+  conditions             Json // zod-validated
+  targetUserIds          String[]
+  method                 AssignmentMethod
+  autoAccept             Boolean          @default(false)
+  acceptSlaMinutes       Int              @default(10)
+  hotAcceptSlaMinutes    Int              @default(5)
+  firstContactSlaMinutes Int              @default(30)
+  maxReassign            Int              @default(3)
+  fallback               FallbackAction   @default(QUEUE)
+  rrCursor               Int              @default(0)
+  weightState            Json?
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  assignments LeadAssignment[]
+
+  @@index([orgId, isActive, priority])
+}
+
+model Conversation {
+  id               String    @id @default(cuid())
+  orgId            String
+  channelAccountId String
+  customerId       String
+  leadId           String?
+  externalThreadId String
+  lastMessageAt    DateTime?
+  lastInboundAt    DateTime?
+  unreadCount      Int       @default(0)
+  isResolved       Boolean   @default(false)
+
+  channelAccount ChannelAccount @relation(fields: [channelAccountId], references: [id])
+  customer       Customer       @relation(fields: [customerId], references: [id])
+  lead           Lead?          @relation(fields: [leadId], references: [id])
+  messages       Message[]
+
+  @@unique([channelAccountId, externalThreadId])
+  @@index([orgId, lastMessageAt])
+  @@index([customerId])
+}
+
+enum MessageDirection {
+  IN
+  OUT
+  NOTE
+}
+
+enum MessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+  RECEIVED
+}
+
+model Message {
+  id                String           @id @default(cuid())
+  conversationId    String
+  direction         MessageDirection
+  kind              String // text | image | file | sticker | quote_pdf | product
+  text              String?
+  attachments       Json?
+  externalMessageId String?
+  status            MessageStatus
+  error             String?
+  sentByUserId      String?
+  idempotencyKey    String?          @unique
+  createdAt         DateTime         @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  sentBy       User?        @relation("MessageSender", fields: [sentByUserId], references: [id])
+
+  @@unique([conversationId, externalMessageId])
+  @@index([conversationId, createdAt])
+}
+
+model PipelineStage {
+  id          String  @id @default(cuid())
+  orgId       String
+  code        String // MOI, DA_LIEN_HE, TU_VAN, BAO_GIA, CHOT, THUA
+  name        String
+  order       Int
+  probability Int
+  isWon       Boolean @default(false)
+  isLost      Boolean @default(false)
+  deals       Deal[]
+
+  @@unique([orgId, code])
+}
+
+model Deal {
+  id              String    @id @default(cuid())
+  orgId           String
+  leadId          String
+  customerId      String
+  ownerId         String
+  stageId         String
+  title           String
+  expectedAmount  Decimal   @default(0) @db.Decimal(18, 0)
+  expectedCloseAt DateTime?
+  closedAt        DateTime?
+  lostReasonId    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  lead       Lead          @relation(fields: [leadId], references: [id])
+  customer   Customer      @relation(fields: [customerId], references: [id])
+  owner      User          @relation("DealOwner", fields: [ownerId], references: [id])
+  stage      PipelineStage @relation(fields: [stageId], references: [id])
+  lostReason LostReason?   @relation(fields: [lostReasonId], references: [id])
+  quotes     Quote[]
+  orders     Order[]
+
+  @@index([orgId, ownerId, stageId])
+}
+
+model LostReason {
+  id       String  @id @default(cuid())
+  orgId    String
+  name     String
+  isActive Boolean @default(true)
+  deals    Deal[]
+}
+
+model ProductCategory {
+  id       String  @id @default(cuid())
+  orgId    String
+  name     String
+  code     String? // MATCHA_TEA, FOOD, DRINK, HOUSEHOLD ...
+  wooId    Int?
+  parentId String?
+
+  @@unique([orgId, wooId])
+}
+
+model Product {
+  id            String    @id @default(cuid())
+  orgId         String
+  sku           String
+  name          String
+  brand         String?
+  categoryIds   String[]
+  imageUrl      String?
+  productUrl    String?
+  retailPrice   Decimal?  @db.Decimal(18, 0)
+  unit          String? // gói, chai, hộp...
+  unitsPerCase  Int? // quy cách thùng
+  inStock       Boolean   @default(true)
+  showInQuote   Boolean   @default(true)
+  wooId         Int?
+  wooModifiedAt DateTime?
+  needsSku      Boolean   @default(false)
+  isActive      Boolean   @default(true)
+
+  priceListItems PriceListItem[]
+  orderItems     OrderItem[]
+
+  @@unique([orgId, sku])
+  @@unique([orgId, wooId])
+}
+
+model PriceList {
+  id        String          @id @default(cuid())
+  orgId     String
+  name      String // "Sỉ cấp 1", "Đại lý"
+  tier      String
+  validFrom DateTime?
+  validTo   DateTime?
+  items     PriceListItem[]
+  customers Customer[]
+}
+
+model PriceListItem {
+  id          String    @id @default(cuid())
+  priceListId String
+  productId   String
+  price       Decimal   @db.Decimal(18, 0)
+  minQty      Int       @default(1)
+  qtyBreaks   Json? // [{minQty:24, price:...}]
+  priceList   PriceList @relation(fields: [priceListId], references: [id])
+  product     Product   @relation(fields: [productId], references: [id])
+
+  @@unique([priceListId, productId])
+}
+
+enum QuoteStatus {
+  DRAFT
+  PENDING_APPROVAL
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+model Quote {
+  id           String      @id @default(cuid())
+  code         String // BG-2026-000123
+  orgId        String
+  customerId   String
+  dealId       String?
+  ownerId      String
+  status       QuoteStatus @default(DRAFT)
+  items        Json // [{productId, sku, name, unit, qty, unitPrice, discountPct, lineTotal}]
+  subtotal     Decimal     @db.Decimal(18, 0)
+  discount     Decimal     @default(0) @db.Decimal(18, 0)
+  shippingFee  Decimal     @default(0) @db.Decimal(18, 0)
+  total        Decimal     @db.Decimal(18, 0)
+  validUntil   DateTime
+  terms        String?
+  pdfKey       String?
+  approvedById String?
+  sentAt       DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id])
+  deal     Deal?    @relation(fields: [dealId], references: [id])
+  owner    User     @relation("QuoteOwner", fields: [ownerId], references: [id])
+  orders   Order[]
+  tasks    Task[]
+
+  @@unique([orgId, code])
+  @@index([orgId, ownerId, status])
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+enum DeliveryStatus {
+  PENDING
+  PACKING
+  SHIPPING
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  CASH
+  CREDIT
+}
+
+model Order {
+  id              String         @id @default(cuid())
+  code            String // DH-2026-000456
+  orgId           String
+  customerId      String
+  ownerId         String
+  quoteId         String?
+  dealId          String?
+  orderedAt       DateTime
+  items           OrderItem[]
+  subtotal        Decimal        @db.Decimal(18, 0)
+  discount        Decimal        @default(0) @db.Decimal(18, 0)
+  shippingFee     Decimal        @default(0) @db.Decimal(18, 0)
+  total           Decimal        @db.Decimal(18, 0)
+  paymentMethod   PaymentMethod
+  paymentStatus   PaymentStatus  @default(UNPAID)
+  paidAmount      Decimal        @default(0) @db.Decimal(18, 0)
+  deliveryStatus  DeliveryStatus @default(PENDING)
+  trackingCode    String?
+  shippingAddress String?
+  note            String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  deletedAt       DateTime?
+
+  customer Customer @relation(fields: [customerId], references: [id])
+  owner    User     @relation("OrderOwner", fields: [ownerId], references: [id])
+  quote    Quote?   @relation(fields: [quoteId], references: [id])
+  deal     Deal?    @relation(fields: [dealId], references: [id])
+  tasks    Task[]
+
+  @@unique([orgId, code])
+  @@index([orgId, customerId, orderedAt])
+  @@index([orgId, ownerId, orderedAt])
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  productId String
+  qty       Decimal @db.Decimal(18, 2)
+  unitPrice Decimal @db.Decimal(18, 0)
+  discount  Decimal @default(0) @db.Decimal(18, 0)
+  lineTotal Decimal @db.Decimal(18, 0)
+  order     Order   @relation(fields: [orderId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+enum TaskType {
+  CALL
+  MESSAGE
+  SEND_QUOTE
+  FOLLOW_UP
+  REORDER
+  MEETING
+  OTHER
+}
+
+enum TaskStatus {
+  TODO
+  DONE
+  CANCELLED
+}
+
+model Task {
+  id                  String     @id @default(cuid())
+  orgId               String
+  title               String
+  type                TaskType
+  status              TaskStatus @default(TODO)
+  dueAt               DateTime
+  remindBeforeMinutes Int        @default(15)
+  assigneeId          String
+  createdById         String?
+  customerId          String?
+  leadId              String?
+  quoteId             String?
+  orderId             String?
+  note                String?
+  completedAt         DateTime?
+  autoRuleKey         String? // "reorder:{customerId}:{yyyy-mm-dd}" để không tạo trùng
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  assignee User      @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  customer Customer? @relation(fields: [customerId], references: [id])
+  lead     Lead?     @relation(fields: [leadId], references: [id])
+  quote    Quote?    @relation(fields: [quoteId], references: [id])
+  order    Order?    @relation(fields: [orderId], references: [id])
+
+  @@unique([orgId, autoRuleKey])
+  @@index([assigneeId, status, dueAt])
+}
+
+enum ActivityType {
+  NOTE
+  CALL
+  MEETING
+  MESSAGE_IN
+  MESSAGE_OUT
+  STAGE_CHANGE
+  ASSIGNMENT
+  QUOTE
+  ORDER
+  TASK_DONE
+  MERGE
+  SYSTEM
+}
+
+model Activity {
+  id         String       @id @default(cuid())
+  orgId      String
+  customerId String?
+  leadId     String?
+  userId     String?
+  type       ActivityType
+  data       Json
+  createdAt  DateTime     @default(now())
+
+  customer Customer? @relation(fields: [customerId], references: [id])
+  lead     Lead?     @relation(fields: [leadId], references: [id])
+
+  @@index([customerId, createdAt])
+  @@index([leadId, createdAt])
+}
+
+model Target {
+  id           String  @id @default(cuid())
+  orgId        String
+  userId       String
+  month        String // "2026-11"
+  revenue      Decimal @db.Decimal(18, 0)
+  newCustomers Int?
+  orders       Int?
+  user         User    @relation(fields: [userId], references: [id])
+
+  @@unique([userId, month])
+}
+
+model QuickReply {
+  id          String  @id @default(cuid())
+  orgId       String
+  shortcut    String
+  content     String
+  createdById String?
+
+  @@unique([orgId, shortcut])
+}
+
+model Notification {
+  id         String    @id @default(cuid())
+  userId     String
+  type       String
+  title      String
+  body       String
+  link       String?
+  readAt     DateTime?
+  sentZaloAt DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id])
+
+  @@index([userId, readAt])
+}
+
+model BotLinkCode {
+  code      String   @id
+  userId    String
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model ApiKey {
+  id         String     @id @default(cuid())
+  orgId      String
+  name       String
+  hash       String     @unique
+  source     LeadSource
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+}
+
+model WebhookEvent {
+  id          String    @id @default(cuid())
+  source      String // facebook | zalo-bot | zalo-company | website | woocommerce
+  eventKey    String    @unique
+  payload     Json
+  status      String // RECEIVED | PROCESSED | FAILED
+  error       String?
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  orgId      String
+  actorId    String?
+  via        String // WEB | ZALO_BOT | API | SYSTEM
+  action     String
+  entityType String
+  entityId   String
+  before     Json?
+  after      Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([orgId, entityType, entityId])
+  @@index([orgId, createdAt])
+}
+
+model Setting {
+  orgId String
+  key   String
+  value Json
+
+  @@id([orgId, key])
+}
