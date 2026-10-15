@@ -8,10 +8,10 @@ describe('navFor (menu đúng quyền)', () => {
     expect(labels('OWNER')).toHaveLength(17);
   });
 
-  it('MANAGER sees everything except user management', () => {
-    expect(labels('MANAGER')).not.toContain('Người dùng');
+  it('MANAGER sees everything, incl. Người dùng for password resets (SPEC 6.1)', () => {
+    expect(labels('MANAGER')).toContain('Người dùng');
     expect(labels('MANAGER')).toContain('Cài đặt & Tích hợp');
-    expect(labels('MANAGER')).toHaveLength(16);
+    expect(labels('MANAGER')).toHaveLength(17);
   });
 
   it('SALES sees selling screens only', () => {

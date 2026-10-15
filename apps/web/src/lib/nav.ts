@@ -29,7 +29,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/san-pham', label: 'Sản phẩm & bảng giá', icon: 'products', anyOf: ['priceList.manage'], group: 'admin', milestone: 'M4' },
   { href: '/chia-lead', label: 'Chia lead', icon: 'rules', anyOf: ['assignmentRule.manage'], group: 'admin', milestone: 'M1' },
   { href: '/chuyen-giao', label: 'Chuyển giao', icon: 'transfers', anyOf: ['transfer.manage'], group: 'admin', milestone: 'M5' },
-  { href: '/nguoi-dung', label: 'Người dùng', icon: 'users', anyOf: ['user.manage'], group: 'admin', milestone: 'M1' },
+  { href: '/nguoi-dung', label: 'Người dùng', icon: 'users', anyOf: ['user.manage', 'user.resetPassword'], group: 'admin', milestone: 'M1' },
   { href: '/cai-dat', label: 'Cài đặt & Tích hợp', icon: 'settings', anyOf: ['settings.manage', 'integration.manage'], group: 'admin', milestone: 'M1' },
   { href: '/audit-log', label: 'Audit log', icon: 'audit', anyOf: ['auditLog.view'], group: 'admin', milestone: 'M5' },
   { href: '/ho-so', label: 'Hồ sơ', icon: 'profile', anyOf: [], group: 'account', milestone: 'M2' },

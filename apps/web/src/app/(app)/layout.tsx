@@ -1,3 +1,4 @@
+import { can } from '@michio/auth/permissions';
 import { ROLE_LABELS } from '@michio/shared';
 import type { ReactNode } from 'react';
 import { AppShell } from '@/components/app-shell';
@@ -10,6 +11,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     <AppShell
       items={navFor(user.role)}
       user={{ fullName: user.fullName, roleLabel: ROLE_LABELS[user.role], status: user.status }}
+      canCreateLead={can(user.role, 'lead.create')}
+      isSales={user.role === 'SALES'}
     >
       {children}
     </AppShell>

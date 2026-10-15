@@ -7,7 +7,10 @@ import { usePathname } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
 import type { NavItem } from '@/lib/nav';
 import { cn } from '@/lib/utils';
+import { LiveUpdates } from './live';
 import { NavIcon } from './nav-icon';
+import { QuickLeadButton } from './quick-lead';
+import { ToastProvider } from './ui/toast';
 import { UserMenu, type UserMenuProps } from './user-menu';
 
 const GROUP_LABELS: Record<NavItem['group'], string | null> = { main: null, admin: 'Quản trị', account: null };
@@ -48,12 +51,19 @@ function NavList({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => v
   );
 }
 
-export function AppShell({ items, user, children }: { items: NavItem[]; user: UserMenuProps; children: ReactNode }) {
+export function AppShell({
+  items,
+  user,
+  canCreateLead,
+  isSales,
+  children,
+}: { items: NavItem[]; user: UserMenuProps; canCreateLead: boolean; isSales: boolean; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   useEffect(() => setOpen(false), [pathname]);
 
   return (
+    <ToastProvider>
     <div className="min-h-dvh">
       <div className="h-1 bg-header" aria-hidden />
       <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-surface/95 px-4 backdrop-blur">
@@ -68,9 +78,11 @@ export function AppShell({ items, user, children }: { items: NavItem[]; user: Us
         </button>
         <Link href="/" className="flex items-center gap-2" aria-label="Michio Sales Hub — Trang chủ">
           <Image src="/brand/logo.png" alt="Michio" width={104} height={40} priority className="h-9 w-auto" />
-          <span className="hidden text-sm font-semibold text-muted-foreground sm:inline">Sales Hub</span>
+          <span className="hidden text-sm font-semibold text-muted-foreground md:inline">Sales Hub</span>
         </Link>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1 sm:gap-2">
+          {canCreateLead && <QuickLeadButton isSales={isSales} />}
+          <LiveUpdates />
           <UserMenu {...user} />
         </div>
       </header>
@@ -92,5 +104,6 @@ export function AppShell({ items, user, children }: { items: NavItem[]; user: Us
         <main className="min-w-0 flex-1 p-4 lg:p-6">{children}</main>
       </div>
     </div>
+    </ToastProvider>
   );
 }

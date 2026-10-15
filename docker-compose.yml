@@ -13,6 +13,7 @@ x-app-env: &app-env
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: michio
       POSTGRES_PASSWORD: michio
@@ -27,6 +28,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     command: ['redis-server', '--appendonly', 'yes']
     ports: ['127.0.0.1:6379:6379']
     volumes: [redisdata:/data]
@@ -40,6 +42,7 @@ services:
   # published on Docker Hub, so dev uses SeaweedFS; production may use any S3 service.
   s3:
     image: chrislusf/seaweedfs:4.48
+    restart: unless-stopped
     command: ['server', '-dir=/data', '-s3', '-s3.port=9000', '-s3.config=/etc/seaweedfs/s3.json']
     ports: ['127.0.0.1:9000:9000']
     volumes: [s3data:/data, ./infra/s3.json:/etc/seaweedfs/s3.json:ro]
@@ -57,6 +60,7 @@ services:
 
   web:
     build: { context: ., target: web }
+    restart: unless-stopped
     env_file: [{ path: .env, required: false }]
     environment:
       <<: *app-env
@@ -68,9 +72,17 @@ services:
 
   worker:
     build: { context: ., target: tools }
+    restart: unless-stopped
     env_file: [{ path: .env, required: false }]
-    environment: *app-env
+    environment:
+      <<: *app-env
+      WORKER_HEALTH_PORT: '3199'
     command: ['pnpm', '--filter', '@michio/worker', 'start']
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://localhost:3199').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }

@@ -35,6 +35,7 @@ const EXPECTED: Record<Action, [Cell, Cell, Cell, Cell, Cell]> = {
   'settings.manage':         ['ALL', 'ALL', '-',   '-',   '-'  ],
   'target.manage':           ['ALL', 'ALL', '-',   '-',   '-'  ],
   'user.manage':             ['ALL', '-',   '-',   '-',   '-'  ], // Quản lý người dùng
+  'user.resetPassword':      ['ALL', 'ALL', '-',   '-',   '-'  ], // §6.1 Owner/Manager đặt lại mật khẩu
   'transfer.manage':         ['ALL', 'ALL', '-',   '-',   '-'  ], // Chuyển giao hàng loạt
   'import.manage':           ['ALL', 'ALL', '-',   '-',   '-'  ],
   'integration.manage':      ['ALL', '-',   '-',   '-',   '-'  ], // Cấu hình tích hợp
