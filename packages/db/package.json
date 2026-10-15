@@ -14,7 +14,8 @@
     "seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
     "reset": "dotenv -e ../../.env -- prisma migrate reset --force --skip-seed",
     "lint": "eslint src prisma",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "test": "vitest run"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

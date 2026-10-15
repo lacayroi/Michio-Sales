@@ -4,10 +4,11 @@
 @import '@fontsource/be-vietnam-pro/600.css';
 @import '@fontsource/be-vietnam-pro/700.css';
 
-/* Brand tokens (SPEC 10.1). See docs/DECISIONS.md D-006 for the contrast-driven variants. */
+/* Brand tokens (SPEC 10.1). Dark mode overrides below keep AA contrast. */
 :root {
-  --brand-green: #00a651;
-  --brand-green-dark: #008c44;
+  --brand-green: #00a651; /* header band, borders, icons — never a background for white text (3.19:1) */
+  --brand-green-strong: #007f3e; /* primary: buttons, links, success (white text 5.1:1) */
+  --brand-green-dark: #006b34; /* primary hover */
   --brand-red: #e3262e;
   --neutral-900: #1f2933;
   --neutral-50: #f7f8f7;
@@ -18,8 +19,8 @@
   --muted: #eef1ee;
   --muted-foreground: #5b6670;
   --border: #dde3de;
-  --primary: #007f3e; /* white text 5.1:1 (AA) */
-  --primary-hover: #006b34;
+  --primary: var(--brand-green-strong);
+  --primary-hover: var(--brand-green-dark);
   --primary-foreground: #ffffff;
   --accent: var(--brand-red); /* white text 4.6:1 */
   --accent-foreground: #ffffff;

@@ -19,34 +19,39 @@ export const WEEKLY_CALENDAR = [1, 2, 3, 4, 5, 6].map((dow) => ({
   ],
 }));
 
-/** Vietnam public holidays (Bộ luật Lao động 2019, Điều 112). Lunar dates resolved per year. */
-const LUNAR_HOLIDAYS: Record<number, { date: string; name: string }[]> = {
+/**
+ * Ngày nghỉ lễ hưởng lương (SPEC 6.1): 12 ngày theo Bộ luật Lao động 2019 Điều 112 + Ngày Văn hóa Việt Nam 24/11
+ * (từ 2026). Với các dịp doanh nghiệp được chọn ngày nghỉ (Tết Âm lịch, ngày liền kề Quốc khánh), seed theo phương án
+ * khu vực nhà nước đã công bố; Owner phải xác nhận lại (setting `calendar.holidaysConfirmedYears`).
+ * Chỉ ghi các ngày Michio thực sự nghỉ: thứ Bảy là ngày làm việc nên không seed các ngày hoán đổi thứ Bảy của khu vực nhà nước.
+ */
+const LUNAR_AND_CHOSEN_HOLIDAYS: Record<number, { date: string; name: string }[]> = {
   2026: [
-    ...['2026-02-14', '2026-02-15', '2026-02-16', '2026-02-17', '2026-02-18', '2026-02-19', '2026-02-20', '2026-02-21', '2026-02-22'].map(
-      (date) => ({ date, name: 'Tết Nguyên đán' }),
-    ),
-    { date: '2026-04-26', name: 'Giỗ Tổ Hùng Vương' },
-    { date: '2026-04-27', name: 'Nghỉ bù Giỗ Tổ Hùng Vương' },
-  ],
-  2027: [
-    ...['2027-02-05', '2027-02-06', '2027-02-07', '2027-02-08', '2027-02-09', '2027-02-10'].map((date) => ({
+    // Thông báo 9441/TB-BNV: nghỉ 14/02 – 22/02/2026 (5 ngày theo luật + cuối tuần + hoán đổi).
+    ...['2026-02-14', '2026-02-16', '2026-02-17', '2026-02-18', '2026-02-19', '2026-02-20', '2026-02-21'].map((date) => ({
       date,
       name: 'Tết Nguyên đán',
     })),
-    { date: '2027-04-16', name: 'Giỗ Tổ Hùng Vương' },
+    { date: '2026-04-27', name: 'Nghỉ bù Giỗ Tổ Hùng Vương (10/3 âm lịch rơi vào Chủ nhật 26/4)' },
+    { date: '2026-09-01', name: 'Quốc khánh (ngày liền kề)' },
   ],
 };
 
 export function holidaysFor(year: number): { date: string; name: string }[] {
+  const chosen = LUNAR_AND_CHOSEN_HOLIDAYS[year] ?? [];
   return [
     { date: `${year}-01-01`, name: 'Tết Dương lịch' },
-    ...(LUNAR_HOLIDAYS[year] ?? []),
+    ...chosen,
+    ...(year === 2026 ? [{ date: '2026-04-26', name: 'Giỗ Tổ Hùng Vương' }] : []),
     { date: `${year}-04-30`, name: 'Ngày Giải phóng miền Nam' },
     { date: `${year}-05-01`, name: 'Quốc tế Lao động' },
-    { date: `${year}-09-01`, name: 'Quốc khánh' },
     { date: `${year}-09-02`, name: 'Quốc khánh' },
-  ];
+    ...(year >= 2026 ? [{ date: `${year}-11-24`, name: 'Ngày Văn hóa Việt Nam' }] : []),
+  ].sort((a, b) => a.date.localeCompare(b.date));
 }
+
+/** Years whose lunar/chosen holidays are seeded; other years need the Owner to add Tết, Giỗ Tổ, Quốc khánh liền kề. */
+export const HOLIDAY_YEARS_WITH_LUNAR = Object.keys(LUNAR_AND_CHOSEN_HOLIDAYS).map(Number);
 
 export const SETTINGS: Record<string, unknown> = {
   'sla.businessHoursOnly': true,
@@ -79,6 +84,8 @@ export const SETTINGS: Record<string, unknown> = {
   'zaloCompany.minSecondsBetweenMessages': 3,
   'zaloCompany.maxMessagesPerDay': 300,
   'woo.syncIntervalHours': 6,
+  // Năm mà Owner đã xác nhận lịch nghỉ lễ; năm hiện tại chưa có → nhắc trên trang chủ (SPEC 6.1).
+  'calendar.holidaysConfirmedYears': [],
 };
 
 export const PIPELINE_STAGES = [
