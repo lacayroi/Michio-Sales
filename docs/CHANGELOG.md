@@ -1,5 +1,11 @@
 # Changelog
 
+## Bổ sung M1 (16/10/2026)
+- **Giờ làm việc** sửa được trong Cài đặt (SPEC A1 cần xác nhận) — hạn nhận/liên hệ tính theo giờ mới ngay.
+- **Lịch nghỉ nhân viên** (§8 `/users/:id/leaves`): Owner thêm/xóa ở màn Người dùng; người đang nghỉ không được chia lead, lead đang chờ họ được chuyển ngay.
+- E2E đặt lại mật khẩu trả mật khẩu về mặc định để các spec sau không phụ thuộc thứ tự chạy.
+- Xem D-027 (vì sao giữ bản M1 của PR #1).
+
 ## M2 — Zalo Bot (16/10/2026)
 
 **Kết nối** (SPEC 5.5)

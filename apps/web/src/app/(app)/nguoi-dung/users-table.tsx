@@ -1,7 +1,7 @@
 'use client';
 
 import { formatDateTime, ROLE_LABELS, toLocalVnPhone, USER_STATUS_LABELS } from '@michio/shared';
-import { Copy, KeyRound, Pencil, UserPlus } from 'lucide-react';
+import { CalendarOff, Copy, KeyRound, Pencil, UserPlus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { type FormEvent, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { useToast } from '@/components/ui/toast';
 import { api } from '@/lib/client';
+import { LeavesDialog } from './leaves-dialog';
 
 type Role = keyof typeof ROLE_LABELS;
 interface Row {
@@ -35,6 +36,7 @@ export function UsersTable({ users, me, canManage }: { users: Row[]; me: { id: s
   const [editing, setEditing] = useState<Row | 'new' | null>(null);
   const [secret, setSecret] = useState<{ name: string; email: string; password: string; created: boolean } | null>(null);
   const [resetting, setResetting] = useState<Row | null>(null);
+  const [leavesOf, setLeavesOf] = useState<Row | null>(null);
   const [busy, setBusy] = useState(false);
 
   const canReset = (u: Row) => u.id !== me.id && u.status !== 'INACTIVE' && (me.role === 'OWNER' || RANK[u.role] < RANK[me.role]);
@@ -80,6 +82,11 @@ export function UsersTable({ users, me, canManage }: { users: Row[]; me: { id: s
                   <KeyRound className="size-4" aria-hidden />Đặt lại mật khẩu
                 </Button>
               )}
+              {canManage && u.status !== 'INACTIVE' && (
+                <Button size="sm" variant="outline" onClick={() => setLeavesOf(u)}>
+                  <CalendarOff className="size-4" aria-hidden />Lịch nghỉ
+                </Button>
+              )}
               {canManage && (
                 <Button size="sm" variant="ghost" onClick={() => setEditing(u)} aria-label={`Sửa ${u.fullName}`}>
                   <Pencil className="size-4" />
@@ -89,6 +96,8 @@ export function UsersTable({ users, me, canManage }: { users: Row[]; me: { id: s
           </li>
         ))}
       </ul>
+
+      {canManage && <LeavesDialog user={leavesOf} onClose={() => setLeavesOf(null)} />}
 
       <Dialog open={resetting !== null} onClose={() => setResetting(null)} title="Đặt lại mật khẩu">
         {resetting && (

@@ -1,5 +1,5 @@
 import { can } from '@michio/auth/permissions';
-import { Bot, CalendarDays, KeyRound, SplitSquareHorizontal } from 'lucide-react';
+import { Bot, CalendarDays, Clock, KeyRound, SplitSquareHorizontal } from 'lucide-react';
 import Link from 'next/link';
 import { requireUser } from '@/lib/session';
 
@@ -8,6 +8,7 @@ export const metadata = { title: 'Cài đặt & Tích hợp' };
 export default async function SettingsPage() {
   const user = await requireUser('settings.manage', 'integration.manage');
   const items = [
+    can(user.role, 'settings.manage') && { href: '/cai-dat/gio-lam-viec', icon: Clock, title: 'Giờ làm việc', desc: 'Khung giờ T2–T7 dùng để tính thời hạn nhận và liên hệ lead' },
     can(user.role, 'settings.manage') && { href: '/cai-dat/ngay-le', icon: CalendarDays, title: 'Ngày lễ', desc: 'Lịch nghỉ dùng để tính thời hạn nhận và liên hệ lead' },
     can(user.role, 'assignmentRule.manage') && { href: '/chia-lead', icon: SplitSquareHorizontal, title: 'Chia lead & thời hạn', desc: 'Luật xoay vòng, thời hạn nhận, lead ngoài giờ' },
     can(user.role, 'integration.manage') && { href: '/cai-dat/api-key', icon: KeyRound, title: 'API key website', desc: 'Kết nối form "Nhận bảng giá sỉ" / "Đăng ký đại lý" trên WordPress' },

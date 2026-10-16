@@ -24,3 +24,4 @@ export * from './bot';
 export * from './tasks';
 export * from './lead-stage';
 export * from './bot-inbound';
+export * from './staff-calendar';
