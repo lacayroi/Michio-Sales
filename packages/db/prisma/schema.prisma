@@ -47,6 +47,7 @@ model User {
   zaloBotChatId      String?    @unique
   // Set when Owner/Manager issues a temporary password; user must change it at next login (SPEC 6.1).
   mustChangePassword Boolean    @default(false)
+  notificationPrefs  Json? // {"zalo": {"<type>": false}} — bật/tắt từng loại thông báo Zalo (6.12, M2)
   lastLoginAt        DateTime?
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
@@ -674,6 +675,7 @@ enum TaskStatus {
 
 model Task {
   id                  String     @id @default(cuid())
+  code                Int        @default(autoincrement()) // mã ngắn cho lệnh bot XONG <mã> (M2)
   orgId               String
   title               String
   type                TaskType
@@ -699,6 +701,7 @@ model Task {
   order    Order?    @relation(fields: [orderId], references: [id])
 
   @@unique([orgId, autoRuleKey])
+  @@unique([orgId, code])
   @@index([assigneeId, status, dueAt])
 }
 

@@ -7,6 +7,8 @@ import type { AppEvent } from './events';
 export interface Effects {
   scheduleSlaCheck(assignmentId: string, at: Date): Promise<void>;
   publish(event: AppEvent): Promise<void>;
+  /** Push new Notification rows to their recipients on Zalo Bot (SPEC 5.5; queue zalo-bot-notify). */
+  deliverNotifications(notificationIds: string[]): Promise<void>;
 }
 
 export interface ServiceContext {
@@ -30,6 +32,9 @@ export class Outbox {
   scheduleSlaCheck(assignmentId: string, at: Date) {
     this.items.push(() => this.effects.scheduleSlaCheck(assignmentId, at));
   }
+  deliverNotifications(ids: string[]) {
+    if (ids.length) this.items.push(() => this.effects.deliverNotifications(ids));
+  }
   async flush() {
     const items = this.items;
     this.items = [];
@@ -43,6 +48,10 @@ export const TX_OPTIONS = { maxWait: 30_000, timeout: 30_000 } as const;
 export class RecordingEffects implements Effects {
   readonly events: AppEvent[] = [];
   readonly slaChecks: { assignmentId: string; at: Date }[] = [];
+  readonly deliveries: string[] = [];
+  async deliverNotifications(ids: string[]) {
+    this.deliveries.push(...ids);
+  }
   async scheduleSlaCheck(assignmentId: string, at: Date) {
     this.slaChecks.push({ assignmentId, at });
   }

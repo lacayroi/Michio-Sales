@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@michio/auth": "workspace:*",
+    "@michio/channels": "workspace:*",
     "@michio/db": "workspace:*",
     "@michio/integrations": "workspace:*",
     "@michio/shared": "workspace:*",

@@ -32,7 +32,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/nguoi-dung', label: 'Người dùng', icon: 'users', anyOf: ['user.manage', 'user.resetPassword'], group: 'admin', milestone: 'M1' },
   { href: '/cai-dat', label: 'Cài đặt & Tích hợp', icon: 'settings', anyOf: ['settings.manage', 'integration.manage'], group: 'admin', milestone: 'M1' },
   { href: '/audit-log', label: 'Audit log', icon: 'audit', anyOf: ['auditLog.view'], group: 'admin', milestone: 'M5' },
-  { href: '/ho-so', label: 'Hồ sơ', icon: 'profile', anyOf: [], group: 'account', milestone: 'M2' },
+  { href: '/ho-so', label: 'Hồ sơ', icon: 'profile', anyOf: [], group: 'account' },
 ];
 
 export function navFor(role: Role): NavItem[] {

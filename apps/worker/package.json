@@ -11,6 +11,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@michio/channels": "workspace:*",
     "@michio/core": "workspace:*",
     "@michio/db": "workspace:*",
     "@michio/shared": "workspace:*",

@@ -2,7 +2,7 @@
 // pg_advisory_xact_lock(hash(rule.id)), so concurrent leads advance the round-robin cursor one by one.
 import { assertAuthorized } from '@michio/auth';
 import type { AssignmentMethod, AssignmentRule, Lead, Prisma } from '@michio/db';
-import { formatDateTime, LEAD_SOURCE_LABELS } from '@michio/shared';
+import { formatDateTime, INTEREST_CATEGORY_LABELS, LEAD_SOURCE_LABELS, maskPhone, ORDER_BAND_LABELS } from '@michio/shared';
 import { recordAudit } from './audit';
 import { addBusinessMinutes, type BusinessCalendar, isBusinessTime } from './business-time';
 import { loadCalendar } from './calendar';
@@ -36,7 +36,7 @@ export interface AssignOptions {
   ignoreHold?: boolean;
 }
 
-type LeadWithCustomer = Lead & { customer: { id: string; contactName: string; shopName: string | null; province: string | null; businessModel: string | null; expectedOrderBand: string | null; interestCategories: string[]; tags: string[]; orderCount: number } };
+type LeadWithCustomer = Lead & { customer: { id: string; contactName: string; phone: string | null; shopName: string | null; province: string | null; businessModel: string | null; expectedOrderBand: string | null; interestCategories: string[]; tags: string[]; orderCount: number } };
 
 async function deadline(now: Date, minutes: number, cal: BusinessCalendar, businessHoursOnly: boolean) {
   return businessHoursOnly ? addBusinessMinutes(now, minutes, cal) : new Date(now.getTime() + minutes * 60_000);
@@ -193,14 +193,20 @@ async function createAssignment(tx: Tx, a: CreateArgs): Promise<Extract<AssignOu
   const c = lead.customer;
   await notifyUsers(tx, outbox, lead.orgId, [userId], {
     type: 'lead.assigned',
-    title: `🔔 Lead #${lead.code} · ${c.contactName}`,
+    // SPEC 5.5 template: "🔔 Lead #1234 · Chị Hoa · 0912xxx678 · Shop… – Hải Phòng · Mức nhập 10–30tr ·
+    // Quan tâm: … · Nguồn: Form sỉ. Nhận trước 14:35 → NHAN 1234 / TRA 1234" (also shown in the bell).
+    title: `🔔 Lead #${lead.code} · ${c.contactName}${c.phone ? ` · ${maskPhone(c.phone)}` : ''}`,
     body: [
-      c.shopName && `${c.shopName}${c.province ? ` – ${c.province}` : ''}`,
-      `Nguồn: ${LEAD_SOURCE_LABELS[lead.source]}`,
-      acceptDeadline ? `Nhận trước ${formatDateTime(acceptDeadline)}` : 'Đã giao trực tiếp cho bạn',
-    ]
-      .filter(Boolean)
-      .join(' · '),
+      [
+        c.shopName && `${c.shopName}${c.province ? ` – ${c.province}` : ''}`,
+        c.expectedOrderBand && c.expectedOrderBand !== 'UNKNOWN' && `Mức nhập ${ORDER_BAND_LABELS[c.expectedOrderBand as keyof typeof ORDER_BAND_LABELS]}`,
+        c.interestCategories.length && `Quan tâm: ${c.interestCategories.map((k) => INTEREST_CATEGORY_LABELS[k] ?? k).join(', ')}`,
+        `Nguồn: ${LEAD_SOURCE_LABELS[lead.source]}`,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      acceptDeadline ? `Nhận trước ${formatDateTime(acceptDeadline)} → NHAN ${lead.code} / TRA ${lead.code}` : 'Đã giao trực tiếp cho bạn',
+    ].join('. '),
     link: `/leads/${lead.id}`,
   });
   outbox.publish({
@@ -234,7 +240,7 @@ const loadLead = (tx: Tx, id: string) =>
     where: { id },
     include: {
       customer: {
-        select: { id: true, contactName: true, shopName: true, province: true, businessModel: true, expectedOrderBand: true, interestCategories: true, tags: true, orderCount: true },
+        select: { id: true, contactName: true, phone: true, shopName: true, province: true, businessModel: true, expectedOrderBand: true, interestCategories: true, tags: true, orderCount: true },
       },
     },
   });
