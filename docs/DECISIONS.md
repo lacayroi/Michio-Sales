@@ -139,3 +139,10 @@ SPEC 5.5 có lệnh `XONG <mã task>` nhưng `Task.id` là cuid. Thêm `Task.cod
 - `next build` với `output: 'standalone'` cần quyền tạo symlink; Windows không bật Developer Mode báo EPERM. `next.config.ts` chỉ bật standalone ngoài Windows — Docker image (Linux) không đổi.
 - Global-setup của test integration/e2e gọi `pnpm` qua `execFileSync` cần `shell: true` trên Windows (`pnpm.cmd`).
 - Test snippet WordPress chuẩn hóa CRLF khi đọc `docs/wordpress-snippet.md` (checkout Windows).
+
+## D-027 · Chọn bản M1 và bổ sung phần còn thiếu (M1/M2)
+Có hai bản M1 làm song song: PR #1 (`feat/m1-leads`, đã ở `main`) và `feat/m1-leads-assignment`. Giữ **PR #1** vì: chặn mật khẩu tạm ở cả API (403) chứ không chỉ giao diện; snippet WordPress được test bằng PHP thật; test tiêm đồng hồ nên kiểm tra được giờ làm việc thật; nhiều e2e hơn; M2 đã xây trên nó. Nhánh kia giữ lại để tham khảo, không merge.
+PR #1 thiếu hai thứ thuộc phạm vi M1 mà bản kia có, nay được bổ sung theo kiến trúc của PR #1:
+- **Giờ làm việc** (`/cai-dat/gio-lam-viec`, `GET/PUT /working-calendar`): A1 là `[CẦN XÁC NHẬN]` nên theo 0.1.4 phải đổi được không cần sửa code. Mỗi ngày tối đa 4 khung, tăng dần, không chồng nhau. Có hiệu lực ngay cho mọi hạn SLA mới.
+- **Lịch nghỉ** (`CRUD /users/:id/leaves` theo §8, nút "Lịch nghỉ" ở màn Người dùng — Owner): engine đã bỏ qua người đang nghỉ nhưng trước đây không có chỗ nhập. Nghỉ theo ngày trọn vẹn giờ VN; không cho trùng khoảng; thêm lịch nghỉ đang diễn ra thì các lead **đang chờ** người đó nhận được chuyển ngay cho người khác (như khi khóa tài khoản, D-017). Sales xem được lịch nghỉ của mình ở Hồ sơ.
+- Chưa port: "thông tin công ty" (dùng in PDF) — làm cùng báo giá ở M4.

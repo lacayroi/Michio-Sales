@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import ExcelJS from 'exceljs';
-import { login, postFormLead, SALES, uniquePhone } from './helpers';
+import { login, PASSWORD, postFormLead, SALES, uniquePhone } from './helpers';
 
 test.describe('website form → lead', () => {
   test('form submission is assigned by round robin in < 10 s', async ({ request }) => {
@@ -149,8 +149,9 @@ test('Đặt lại mật khẩu: owner resets, sales must change it at next logi
   await expect(page).toHaveURL(/\/doi-mat-khau$/);
 
   await page.getByLabel('Mật khẩu tạm').fill(temp);
-  await page.getByLabel('Mật khẩu mới', { exact: true }).fill('MatKhauMoi#2026');
-  await page.getByLabel('Nhập lại mật khẩu mới').fill('MatKhauMoi#2026');
+  // Back to the demo password so later specs (bot e2e) can still sign in as this sales.
+  await page.getByLabel('Mật khẩu mới', { exact: true }).fill(PASSWORD);
+  await page.getByLabel('Nhập lại mật khẩu mới').fill(PASSWORD);
   await page.getByRole('button', { name: 'Đổi mật khẩu' }).click();
   await expect(page.getByRole('heading', { name: 'Việc của bạn hôm nay' })).toBeVisible();
 });
@@ -161,4 +162,22 @@ test('manager can reset sales passwords but not the owner', async ({ page }) => 
   await expect(page.getByTestId('user-row').filter({ hasText: 'Lê Thị Hạnh' }).getByRole('button', { name: 'Đặt lại mật khẩu' })).toBeVisible();
   await expect(page.getByTestId('user-row').filter({ hasText: 'Nguyễn Minh Đức' }).getByRole('button', { name: 'Đặt lại mật khẩu' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Thêm người dùng' })).toHaveCount(0);
+});
+
+test('Owner sets working hours and records a leave', async ({ page }) => {
+  await login(page, 'owner@michio.local');
+  await page.goto('/cai-dat/gio-lam-viec');
+  await page.getByLabel('Thứ Bảy kết thúc').fill('16:30');
+  await page.getByRole('button', { name: 'Lưu giờ làm việc' }).click();
+  await expect(page.getByText('Đã lưu giờ làm việc')).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel('Thứ Bảy kết thúc')).toHaveValue('16:30');
+
+  await page.goto('/nguoi-dung');
+  await page.getByTestId('user-row').filter({ hasText: 'Vũ Ngọc Ánh' }).getByRole('button', { name: 'Lịch nghỉ' }).click();
+  await page.getByLabel('Từ ngày').fill('2026-12-01');
+  await page.getByLabel('Đến hết ngày').fill('2026-12-03');
+  await page.getByLabel('Lý do').fill('Nghỉ phép năm');
+  await page.getByRole('button', { name: 'Thêm lịch nghỉ' }).click();
+  await expect(page.getByTestId('leaves')).toContainText('01/12/2026 – 03/12/2026 · Nghỉ phép năm');
 });

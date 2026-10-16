@@ -471,12 +471,12 @@ export async function assignDirect(ctx: ServiceContext, leadIds: string[], userI
 }
 
 /** Re-routes leads still waiting for a user who just became unavailable for good (deactivation). */
-export async function reclaimPendingForUser(ctx: ServiceContext, userId: string) {
+export async function reclaimPendingForUser(ctx: ServiceContext, userId: string, reason = 'Người nhận đã nghỉ việc') {
   const pending = await ctx.db.leadAssignment.findMany({ where: { userId, status: 'PENDING', lead: { orgId: ctx.orgId } }, select: { id: true } });
   const out: AssignOutcome[] = [];
   for (const a of pending) {
     const claimed = await ctx.db.leadAssignment.updateMany({ where: { id: a.id, status: 'PENDING' }, data: { status: 'EXPIRED' } });
-    if (claimed.count) out.push(await releaseAndReroute(ctx, { assignmentId: a.id, status: 'EXPIRED', reason: 'Người nhận đã nghỉ việc', action: 'lead.assignment_reclaimed' }));
+    if (claimed.count) out.push(await releaseAndReroute(ctx, { assignmentId: a.id, status: 'EXPIRED', reason, action: 'lead.assignment_reclaimed' }));
   }
   return out;
 }
