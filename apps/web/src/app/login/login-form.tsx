@@ -27,7 +27,8 @@ export function LoginForm({ next }: { next: string }) {
         setError(body?.error?.message ?? 'Không đăng nhập được, vui lòng thử lại');
         return;
       }
-      router.replace(next);
+      const data = (await res.json()) as { mustChangePassword?: boolean };
+      router.replace(data.mustChangePassword ? '/doi-mat-khau' : next);
       router.refresh();
     } catch {
       setError('Không kết nối được máy chủ');

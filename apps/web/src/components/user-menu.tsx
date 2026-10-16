@@ -45,7 +45,8 @@ export function UserMenu({ fullName, roleLabel, status: initialStatus }: UserMen
           className={cn('size-2 rounded-full', status === 'AVAILABLE' ? 'bg-brand-green' : 'bg-amber-500')}
           aria-hidden
         />
-        {status === 'AVAILABLE' ? 'Đang làm việc' : status === 'BUSY' ? 'Bận' : 'Nghỉ phép'}
+        <span className="hidden sm:inline">{status === 'AVAILABLE' ? 'Đang làm việc' : status === 'BUSY' ? 'Bận' : 'Nghỉ phép'}</span>
+        <span className="sr-only sm:hidden">{status === 'AVAILABLE' ? 'Đang làm việc' : status === 'BUSY' ? 'Bận' : 'Nghỉ phép'}</span>
       </button>
       <div className="hidden text-right leading-tight sm:block">
         <p className="text-sm font-semibold" data-testid="current-user">{fullName}</p>

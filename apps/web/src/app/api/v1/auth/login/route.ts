@@ -41,7 +41,7 @@ export async function POST(req: Request) {
     ]);
 
     const token = await createSessionToken({ userId: user.id, orgId: user.orgId, role: user.role }, env.sessionSecret);
-    const res = NextResponse.json({ user: { id: user.id, fullName: user.fullName, role: user.role } });
+    const res = NextResponse.json({ user: { id: user.id, fullName: user.fullName, role: user.role }, mustChangePassword: user.mustChangePassword });
     res.cookies.set(SESSION_COOKIE, token, {
       httpOnly: true,
       secure: env.secureCookies,

@@ -59,3 +59,50 @@ Migration `audit_log_append_only` thêm trigger chặn `UPDATE`/`DELETE` trên `
 
 ## D-011 · Đường dẫn màn hình tiếng Việt không dấu (M0)
 `/leads`, `/hop-thu`, `/khach-hang`, `/khach-can-cham`, `/bao-gia`, `/don-hang`, `/viec-cua-toi`, `/bao-cao`, `/san-pham`, `/chia-lead`, `/chuyen-giao`, `/nguoi-dung`, `/cai-dat`, `/audit-log`, `/ho-so`, `/khong-co-quyen`. API giữ tiếng Anh theo §8.
+
+## D-012 · Mã lead ngắn bằng một sequence Postgres (M1)
+`Lead.code` (§7) dùng cho lệnh bot (`NHAN 1234`). Migration `m1_leads` tạo `lead_code_seq` (bắt đầu 1001); seed đẩy sequence qua mã lớn nhất. v1 chỉ có 1 tổ chức nên một sequence chung vẫn bảo đảm `@@unique([orgId, code])` mà không cần khóa. Khi có nhiều tổ chức: chuyển sang bộ đếm theo org.
+
+## D-013 · Thêm cột `User.mustChangePassword` (M1)
+SPEC 6.1 (bản 1.1) yêu cầu "sinh mật khẩu tạm, bắt đổi ở lần đăng nhập sau" — §7 chưa có chỗ lưu trạng thái này. Cột được bật khi Owner tạo tài khoản hoặc Owner/Manager đặt lại mật khẩu. Khi bật: mọi trang chuyển về `/doi-mat-khau`, mọi API (trừ `/api/v1/me/*`) trả 403 `PASSWORD_CHANGE_REQUIRED`. Mật khẩu tạm 10 ký tự, không có ký tự dễ nhầm (0/O, 1/l/I), chỉ hiện một lần, không ghi vào log/audit.
+Manager chỉ đặt lại được cho Sales/Support/Viewer (không cho Owner/Manager khác); không ai tự đặt lại cho chính mình (dùng "Đổi mật khẩu" trong Hồ sơ). Vì vậy menu "Người dùng" hiện cho cả Manager, nhưng Manager không tạo/sửa/khóa tài khoản (`user.manage` vẫn chỉ Owner).
+
+## D-014 · Side effect sau commit (outbox trong bộ nhớ) (M1)
+Service trong `packages/core` không gọi Redis/BullMQ trực tiếp mà ghi vào `Outbox`; chỉ flush **sau khi transaction commit** (lên lịch `sla-check` đúng `acceptDeadline`, phát sự kiện SSE). Rollback thì không có gì lọt ra ngoài. Test dùng `RecordingEffects`, production dùng `createRedisEffects`. Nếu process chết giữa commit và flush thì `sla-sweeper` (mỗi phút) là lưới an toàn cho SLA, đúng như SPEC 6.3.4.
+Thông báo "được giao lead / bị thu hồi / khách liên hệ lại / hàng chờ / quá hạn liên hệ" được lưu vào bảng `Notification` và đẩy realtime lên chuông trên web. Gửi qua Zalo Bot làm ở M2, đọc từ chính các bản ghi này.
+
+## D-015 · Ai nhận lead khi người tạo là Sales (M1)
+§3 ghi "SALES tạo lead (tự giao cho mình)", nhưng 5.3/5.5 lại cho phép người trực Zalo công ty (có thể là một sales) tạo lead rồi **chia xoay vòng**. Hai cách được hỗ trợ:
+- `assignMode = SELF`: sales giữ lead (giao trực tiếp, đã nhận). Mặc định khi nguồn không phải Zalo công ty.
+- `assignMode = AUTO`: đưa vào engine chia như mọi lead khác. Mặc định khi nguồn là `ZALO_COMPANY`.
+Sales **không** được chọn người khác (`USER`), vì việc đó cần `lead.assign`.
+
+## D-016 · Giao tay / chuyển giao không cần bấm "Nhận" (M1)
+Khi Owner/Manager chủ động giao hoặc chuyển (6.3.5), assignment mới tạo ở trạng thái `ACCEPTED` (method `MANUAL`, hoặc `TRANSFER` nếu lead đã có người), lead chuyển `IN_PROGRESS` và bắt đầu đếm hạn liên hệ đầu tiên. Lý do: người quản lý đã quyết định, thêm bước nhận chỉ tạo thêm một vòng thu hồi vô nghĩa. Assignment cũ chuyển `REASSIGNED`.
+
+## D-017 · Vòng thu hồi và phạm vi dữ liệu (M1)
+- `Lead.reassignCount` tăng ở **cả** "Trả" và "quá hạn". Khi chạm `maxReassign` (mặc định 3) thì lead vào hàng chờ và báo Owner/Manager.
+- Bấm Nhận sau khi đã quá hạn bị từ chối, dù sweeper chưa kịp chạy — tránh hai người cùng tưởng mình đang giữ lead.
+- Người từng trả hoặc bị thu hồi một lead không bao giờ được chia lại chính lead đó (6.3.3).
+- Khách **chưa có đơn** (PROSPECT) đi theo người giữ lead (`Customer.ownerId` cập nhật mỗi lần giao) để Sales thấy hồ sơ khách trong phạm vi OWN. Khi đã có đơn thì người phụ trách khách cố định (6.7) cho tới khi chuyển giao (M5).
+- Khách cũ quay lại: giao thẳng sales phụ trách nếu người đó không `INACTIVE`/`OFF`/đang nghỉ phép. Vẫn giao khi đang `BUSY`, vì đây là khách quen của họ. Ngược lại thì xoay vòng.
+- Khách liên hệ lại khi lead đang mở nhưng chưa có người giữ (đang chờ chia): chỉ ghi Activity "Liên hệ lại", chưa có ai để báo.
+- Khi một sales bị đặt `INACTIVE`, các lead **đang chờ** họ nhận được chuyển ngay cho người khác. Lead đã nhận giữ nguyên, chờ chuyển giao ở M5.
+
+## D-018 · Import Excel chỉ tạo/cập nhật khách, không tạo lead (M1)
+Phụ lục A dùng để "nhập danh sách khách sỉ hiện có". Nếu tạo lead cho 2.000 khách cũ, mỗi lead sẽ có một hạn nhận 10 phút — vô nghĩa. Vì vậy import chỉ:
+- Tạo khách mới, hoặc cập nhật khách trùng SĐT (chạy lại không sinh bản trùng).
+- Gán sales phụ trách theo cột email; nếu trống thì theo tùy chọn: xoay vòng giữa người nhận của luật mặc định (không làm lệch con trỏ của luật), giao 1 người, hoặc chưa giao.
+- Tính `lifecycle`, `nextReorderAt` từ cột ngày đơn gần nhất / số đơn / chu kỳ. Nếu có cột chu kỳ thì khóa chu kỳ, không cho tự tính lại.
+- Nhãn không khớp ánh xạ 5.1 thì báo lỗi dòng (khác với form web: form web vẫn nhận lead và ghi `OTHER`, để không mất khách).
+- Không có bảng Import trong §7: trạng thái và tiến độ lấy từ job BullMQ (`GET /imports/:id`, giữ 7 ngày). Mỗi khách có AuditLog riêng, kèm một bản tổng.
+
+## D-019 · Realtime: `router.refresh()` thay vì TanStack Query ở M1 (M1)
+Các màn hình M1 render ở server (Server Components). SSE (`/api/v1/events/stream`, Redis pub/sub, lọc theo người nhận và vai trò) kích hoạt `router.refresh()` (gộp các sự kiện trong 300 ms), nên đơn giản hơn mà vẫn realtime. TanStack Query (SPEC 4.1) sẽ dùng khi cần cache phía client: hộp thư M3, Kanban M4.
+
+## D-020 · `POST /public/leads` (M1)
+- 201 khi tạo lead mới; **200** khi trùng (`duplicate: true`, kèm lead đang mở); **202** `{ok:true}` khi trường honeypot `website` có dữ liệu (không tạo gì, không để lộ lý do cho bot); 401 khi key sai hoặc đã thu hồi; 422 khi thiếu tên/SĐT hợp lệ; 429 khi vượt 60 request/phút/key.
+- Chia lead ngay trong request, nên phản hồi có luôn `assignedTo` (Phụ lục B). Trên máy dev: khoảng 140 ms từ form tới lead đã được chia.
+
+## D-021 · Snippet WordPress hỗ trợ cả Contact Form 7 và WPForms (M1)
+Plugin form chưa được xác nhận (SPEC 5.1). `docs/wordpress-snippet.md` chứa một mu-plugin hook cả `wpcf7_mail_sent` lẫn `wpforms_process_complete`. Trường được so khớp theo tên (CF7) hoặc nhãn (WPForms), không phân biệt dấu, mở rộng được qua filter. Form gửi được xác định bằng `MICHIO_HUB_FORMS` (khuyến nghị); nếu không khai báo thì dựa vào đường dẫn `/si-hang-nhat/`, `/dang-ky-dai-ly/`. Test chạy **đúng khối PHP trong tài liệu** bằng PHP 8.3 (Docker) với WordPress/CF7/WPForms giả lập, rồi đưa payload vào Sales Hub.

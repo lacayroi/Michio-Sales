@@ -449,6 +449,8 @@ async function main() {
     }
   }
 
+  await prisma.$executeRaw`SELECT setval('lead_code_seq', (SELECT max(code) FROM "Lead"))`;
+
   // ---------- quotes ----------
   const deals = await prisma.deal.findMany({ where: { orgId }, include: { customer: true, stage: true } });
   const quoteDeals = [...deals.filter((d) => d.stage.code === 'BAO_GIA'), ...deals.filter((d) => d.stage.code !== 'BAO_GIA')].slice(0, 25);
