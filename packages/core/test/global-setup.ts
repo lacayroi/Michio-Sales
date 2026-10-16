@@ -22,7 +22,8 @@ export async function setup(project: TestProject) {
     stop = () => container.stop();
   }
   const dbDir = path.resolve(import.meta.dirname, '../../db');
-  execFileSync('pnpm', ['exec', 'prisma', 'migrate', 'deploy'], { cwd: dbDir, env: { ...process.env, DATABASE_URL: url }, stdio: 'pipe' });
+  // `shell` on Windows resolves pnpm.cmd (execFile cannot run .cmd shims directly).
+  execFileSync('pnpm', ['exec', 'prisma', 'migrate', 'deploy'], { cwd: dbDir, env: { ...process.env, DATABASE_URL: url }, stdio: 'pipe', shell: process.platform === 'win32' });
   project.provide('databaseUrl', url);
 }
 

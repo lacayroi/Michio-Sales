@@ -8,7 +8,7 @@ export interface NotificationInput {
   link?: string;
 }
 
-/** Creates in-app notifications (Zalo Bot delivery arrives in M2) and publishes them after commit. */
+/** Creates in-app notifications, publishes them (SSE) and queues Zalo Bot delivery after commit. */
 export async function notifyUsers(
   tx: Prisma.TransactionClient,
   outbox: Outbox,
@@ -18,7 +18,8 @@ export async function notifyUsers(
 ) {
   const unique = [...new Set(userIds)];
   if (!unique.length) return;
-  await tx.notification.createMany({ data: unique.map((userId) => ({ userId, ...input })) });
+  const rows = await tx.notification.createManyAndReturn({ data: unique.map((userId) => ({ userId, ...input })), select: { id: true } });
+  outbox.deliverNotifications(rows.map((r) => r.id));
   outbox.publish({ type: 'notification.new', orgId, audience: { userIds: unique }, data: { type: input.type, title: input.title } });
 }
 

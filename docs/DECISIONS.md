@@ -106,3 +106,36 @@ Các màn hình M1 render ở server (Server Components). SSE (`/api/v1/events/s
 
 ## D-021 · Snippet WordPress hỗ trợ cả Contact Form 7 và WPForms (M1)
 Plugin form chưa được xác nhận (SPEC 5.1). `docs/wordpress-snippet.md` chứa một mu-plugin hook cả `wpcf7_mail_sent` lẫn `wpforms_process_complete`. Trường được so khớp theo tên (CF7) hoặc nhãn (WPForms), không phân biệt dấu, mở rộng được qua filter. Form gửi được xác định bằng `MICHIO_HUB_FORMS` (khuyến nghị); nếu không khai báo thì dựa vào đường dẫn `/si-hang-nhat/`, `/dang-ky-dai-ly/`. Test chạy **đúng khối PHP trong tài liệu** bằng PHP 8.3 (Docker) với WordPress/CF7/WPForms giả lập, rồi đưa payload vào Sales Hub.
+
+## D-022 · Thông số Zalo Bot đã đối chiếu (M2)
+Đối chiếu https://bot.zaloplatforms.com/docs ngày 16/10/2026 (SPEC 0.1.5), gom trong `packages/channels/src/zalo-bot` (`ZALO_BOT`):
+- API `https://bot-api.zaloplatforms.com/bot<TOKEN>/<method>`, phản hồi `{ok, result, description, error_code}`; mã lỗi 400/401/403/404/408/429.
+- `setWebhook {url (HTTPS, không localhost/IP nội bộ), secret_token 8–256 ký tự}`; mỗi request Zalo gửi header `X-Bot-Api-Secret-Token`. `getUpdates` và webhook **loại trừ nhau**.
+- Tin tới: `result.event_name` (`message.text.received`, `…image…`, `…sticker…`, `…voice…`, `…unsupported…`), `message.{from.id, chat.id, chat.chat_type, text, message_id, date}`.
+- `sendMessage {chat_id, text 1–2000 ký tự}`. Tài liệu **không** nêu hạn mức cụ thể (chỉ có 429) và không có nút bấm → lệnh dạng chữ như SPEC; gửi giới hạn 10 tin/giây ở worker, 429/408/lỗi mạng thì thử lại, 400/401/404 thì dừng.
+- Tài liệu không nói Zalo có gửi lại webhook khi lỗi hay không → trả 200 ngay sau khi lưu `WebhookEvent`, xử lý qua queue; tin trùng `message_id` chỉ chạy một lần.
+
+## D-023 · Lệnh bot dùng lại service web; ai được làm gì (M2)
+- Mỗi lệnh chạy service của `packages/core` với người dùng đã liên kết làm `actor`, `via = 'ZALO_BOT'`: phân quyền và AuditLog giống hệt web. Core chỉ trả nội dung trả lời; gửi đi qua `packages/channels` (CLAUDE.md).
+- `LEAD` luôn đưa vào luật chia (`assignMode = AUTO`, nguồn `ZALO_COMPANY`) — đúng 5.3 chế độ A, kể cả khi người trực là một sales.
+- `GOI` với lead đang chờ người gõ lệnh nhận thì tự "Nhận" trước (gọi cho khách tức là đã nhận lead).
+- `HEN` tạo Task gán cho chính người gõ, loại suy từ nội dung ("gọi…" → CALL, "báo giá" → SEND_QUOTE…). Ngày giờ hiểu `dd/mm[/yyyy] hh:mm`, `mai 9h`, `hôm nay 15:30`, `15h` (đã qua thì sang mai); `05/01` gõ vào tháng 12 là năm sau. Giờ trống (vd "15") không được hiểu là giờ.
+- `TRANGTHAI` cần lead đang xử lý (đã nhận); tạo một Deal cho lead nếu chưa có. `THUA [lý do]` chọn lý do thua gần nhất theo chữ gõ, không khớp thì "Khác". `CHOT` đóng lead là thắng; ghi nhận đơn sỉ trên web ở M4.
+- `NGHI` / `LAMVIEC` đổi `AVAILABLE` ↔ `BUSY` (không đụng `OFF` nghỉ phép).
+- Mã liên kết là **6 chữ số** (không lẫn với lệnh/mã lead), hạn 10 phút, dùng một lần. Một chat Zalo chỉ gắn một tài khoản; liên kết lại sẽ gỡ khỏi tài khoản cũ.
+
+## D-024 · Thông báo qua Zalo dùng chính bảng Notification (M2)
+Như D-014 đã hẹn: mỗi `Notification` mới được đưa vào queue `zalo-bot-notify` sau khi commit; job quyết định gửi / hoãn / bỏ (`prepareBotDelivery`, có test):
+- Ngoài giờ làm việc (lịch công ty + ngày lễ), trừ khi `notify.zaloOutsideHours = true`: hoãn tới giờ mở cửa kế tiếp. Loại khẩn gửi ngay: `lead.queued` (lead không ai nhận — "cảnh báo cho Owner"), `lead.expiring`, `system`.
+- Tắt theo người dùng (`User.notificationPrefs`, migration `m2_zalo_bot`); "được giao lead" luôn bật (6.12).
+- "Khách liên hệ lại": tối đa 1 tin Zalo / lead / người / 5 phút. Cảnh báo "còn 3 phút" quá 10 phút mà chưa gửi được thì bỏ.
+- "Còn 3 phút", nhắc việc và tổng kết sáng cũng là `Notification` (hiện cả ở chuông web), chống trùng bằng `type + link`. Tổng kết chạy trong 2 giờ sau `notify.dailyDigestTime`, chỉ ngày làm việc, nên đổi giờ trong Cài đặt có hiệu lực ngay, không cần khởi động lại worker.
+- Nội dung "được giao lead" theo mẫu 5.5 (SĐT che `0912***678`); khi sales `NHAN` thì bot trả SĐT đầy đủ để gọi.
+
+## D-025 · Bổ sung `Task.code` (M2)
+SPEC 5.5 có lệnh `XONG <mã task>` nhưng `Task.id` là cuid. Thêm `Task.code` tự tăng (`@default(autoincrement())`, unique theo org), hiển thị "việc V12"; parser chấp nhận `12` hoặc `V12`. v1 một tổ chức nên một sequence chung là đủ (như D-012).
+
+## D-026 · Chạy trên Windows (M2)
+- `next build` với `output: 'standalone'` cần quyền tạo symlink; Windows không bật Developer Mode báo EPERM. `next.config.ts` chỉ bật standalone ngoài Windows — Docker image (Linux) không đổi.
+- Global-setup của test integration/e2e gọi `pnpm` qua `execFileSync` cần `shell: true` trên Windows (`pnpm.cmd`).
+- Test snippet WordPress chuẩn hóa CRLF khi đọc `docs/wordpress-snippet.md` (checkout Windows).

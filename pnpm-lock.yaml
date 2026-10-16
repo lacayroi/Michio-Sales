@@ -135,6 +135,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@michio/channels':
+        specifier: workspace:*
+        version: link:../../packages/channels
       '@michio/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -176,6 +179,9 @@ importers:
       '@michio/auth':
         specifier: workspace:*
         version: link:../auth
+      '@michio/channels':
+        specifier: workspace:*
+        version: link:../channels
       '@michio/db':
         specifier: workspace:*
         version: link:../db

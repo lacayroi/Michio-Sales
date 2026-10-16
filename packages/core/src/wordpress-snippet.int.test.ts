@@ -19,7 +19,8 @@ interface Captured {
 
 function extractPlugin(): string {
   const md = readFileSync(path.join(ROOT, 'docs/wordpress-snippet.md'), 'utf8');
-  const blocks = [...md.matchAll(/```php\n([\s\S]*?)```/g)].map((m) => m[1] as string);
+  // Normalize CRLF (Windows checkouts) so the block regex matches everywhere.
+  const blocks = [...md.replace(/\r\n/g, '\n').matchAll(/```php\n([\s\S]*?)```/g)].map((m) => m[1] as string);
   const plugin = blocks.find((b) => b.includes('Plugin Name: Michio Sales Hub'));
   if (!plugin) throw new Error('mu-plugin block not found in docs/wordpress-snippet.md');
   return plugin;

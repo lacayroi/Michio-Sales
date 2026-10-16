@@ -1,5 +1,24 @@
 # Changelog
 
+## M2 — Zalo Bot (16/10/2026)
+
+**Kết nối** (SPEC 5.5)
+- `packages/channels/zalo-bot`: client theo tài liệu chính thức (`bot-api.zaloplatforms.com/bot<TOKEN>/…`: sendMessage ≤ 2.000 ký tự, setWebhook, getUpdates), xác minh header `X-Bot-Api-Secret-Token` (so sánh hằng thời gian), client mô phỏng khi `MOCK_INTEGRATIONS=true`.
+- Webhook `POST /api/v1/webhooks/zalo-bot` → `WebhookEvent` (chống trùng theo `message_id`, phát lại được) → queue `zalo-bot-inbound`. Tùy chọn polling `getUpdates` cho máy chưa có HTTPS.
+- Liên kết tài khoản: Hồ sơ → "Kết nối Zalo Bot" → mã 6 số (10 phút) → nhắn cho bot. Cài đặt → Zalo Bot cho Owner: trạng thái, đăng ký webhook, ai đã kết nối.
+
+**Lệnh** (không phân biệt hoa thường, có/không dấu): `LEAD`, `NHAN`, `TRA`, `GOI`, `HEN <mã> <dd/mm hh:mm | mai 9h | 15h>`, `XONG`, `HOMNAY`, `TRANGTHAI <mã> TUVAN|BAOGIA|CHOT|THUA [lý do]`, `NGHI`, `LAMVIEC`, `HELP`. Mỗi lệnh gọi đúng service của web với `via = ZALO_BOT` → cùng phân quyền, cùng AuditLog.
+
+**Thông báo qua Zalo**: mọi `Notification` (được giao lead theo mẫu 5.5 có SĐT che + `NHAN/TRA`, thu hồi, khách liên hệ lại — tối đa 1 lần/khách/5 phút, hàng chờ, quá hạn liên hệ) đi qua queue `zalo-bot-notify`; ngoài giờ làm việc hoãn tới giờ mở cửa (trừ loại khẩn); có link mở thẳng trang lead. Mới: "⏰ Còn 3 phút để nhận lead", nhắc việc trước 15 phút, tổng kết 08:00 T2–T7 (Sales: lead chờ nhận/chưa liên hệ, việc hôm nay, khách cần nhắc tái đặt, khách có nguy cơ; Owner/Manager: lead hôm qua theo nguồn, lead chưa xử lý, doanh số tháng vs chỉ tiêu). Người dùng tự tắt từng loại (trừ "được giao lead").
+
+**S18 Hồ sơ**: kết nối bot, cài đặt thông báo, lịch nghỉ, đổi mật khẩu; ở chế độ demo có khung chat mô phỏng Zalo Bot.
+
+**Dữ liệu**: migration `m2_zalo_bot` (`Task.code` tự tăng cho `XONG <mã>`, `User.notificationPrefs`). Service mới: task (tạo/hoàn thành/nhắc), đổi giai đoạn lead (tạo deal khi cần, tự chọn lý do thua theo chữ gõ).
+
+**Sửa**: `pnpm db:deploy` gọi nhầm `pnpm deploy`; global-setup test/e2e gọi `pnpm` bằng `execFileSync` không chạy trên Windows; test snippet WordPress không đọc được file CRLF; `next build` trên Windows không có Developer Mode (D-025).
+
+**Kiểm thử**: +34 unit (parser lệnh, ngày giờ `HEN`), +8 unit client Zalo, +15 integration (DoD M2: LEAD → chia → NHAN/GOI/HEN/XONG/TRA/TRANGTHAI/NGHI qua bot; phân quyền; quy tắc gửi: ngoài giờ, tắt loại, throttle, hết hạn; nhắc việc/“còn 3 phút”/tổng kết sáng đúng 1 lần, bỏ qua ngày lễ; webhook trùng chỉ chạy 1 lần), +2 e2e qua khung chat mô phỏng.
+
 ## M1 — Lead & chia lead (15/10/2026)
 
 **Tiếp nhận & chống trùng (6.2)**
