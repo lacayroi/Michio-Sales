@@ -35,34 +35,35 @@ enum UserStatus {
 }
 
 model User {
-  id            String     @id @default(cuid())
-  orgId         String
-  email         String
-  phone         String?
-  fullName      String
-  passwordHash  String
-  role          Role
-  status        UserStatus @default(AVAILABLE)
-  maxOpenLeads  Int        @default(40)
-  zaloBotChatId String?    @unique
-  lastLoginAt   DateTime?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  deletedAt     DateTime?
+  id                 String     @id @default(cuid())
+  orgId              String
+  email              String
+  phone              String?
+  fullName           String
+  passwordHash       String
+  role               Role
+  status             UserStatus @default(AVAILABLE)
+  maxOpenLeads       Int        @default(40)
+  zaloBotChatId      String?    @unique
+  lastLoginAt        DateTime?
+  mustChangePassword Boolean    @default(false) // đặt lại mật khẩu tạm bởi Owner/Manager (6.1)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  deletedAt          DateTime?
 
-  teamMemberships   TeamMember[]
-  leaves            UserLeave[]
-  ownedCustomers    Customer[]       @relation("CustomerOwner")
-  ownedLeads        Lead[]           @relation("LeadOwner")
-  assignments       LeadAssignment[] @relation("AssignmentUser")
-  ownedDeals        Deal[]           @relation("DealOwner")
-  ownedQuotes       Quote[]          @relation("QuoteOwner")
-  ownedOrders       Order[]          @relation("OrderOwner")
-  assignedTasks     Task[]           @relation("TaskAssignee")
-  sentMessages      Message[]        @relation("MessageSender")
-  targets           Target[]
-  notifications     Notification[]
-  botLinkCodes      BotLinkCode[]
+  teamMemberships TeamMember[]
+  leaves          UserLeave[]
+  ownedCustomers  Customer[]       @relation("CustomerOwner")
+  ownedLeads      Lead[]           @relation("LeadOwner")
+  assignments     LeadAssignment[] @relation("AssignmentUser")
+  ownedDeals      Deal[]           @relation("DealOwner")
+  ownedQuotes     Quote[]          @relation("QuoteOwner")
+  ownedOrders     Order[]          @relation("OrderOwner")
+  assignedTasks   Task[]           @relation("TaskAssignee")
+  sentMessages    Message[]        @relation("MessageSender")
+  targets         Target[]
+  notifications   Notification[]
+  botLinkCodes    BotLinkCode[]
 
   @@unique([orgId, email])
   @@index([orgId, phone])

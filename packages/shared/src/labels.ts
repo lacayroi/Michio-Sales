@@ -55,3 +55,38 @@ export const LIFECYCLE_LABELS = {
   AT_RISK: 'Có nguy cơ rời bỏ',
   DORMANT: 'Ngủ đông',
 } as const;
+
+export const LEAD_STATUS_LABELS = {
+  NEW: 'Mới',
+  UNASSIGNED: 'Chờ giao',
+  ASSIGNED: 'Chờ nhận',
+  IN_PROGRESS: 'Đang xử lý',
+  WON: 'Đã chốt',
+  LOST: 'Không thành công',
+} as const;
+
+export const PRIORITY_LABELS = { HOT: 'Nóng', WARM: 'Ấm', COLD: 'Thường' } as const;
+
+export const ASSIGNMENT_STATUS_LABELS = {
+  PENDING: 'Chờ nhận',
+  ACCEPTED: 'Đã nhận',
+  RETURNED: 'Đã trả lại',
+  EXPIRED: 'Bị thu hồi (quá hạn)',
+  REASSIGNED: 'Đã chuyển người khác',
+} as const;
+
+export const ASSIGNMENT_METHOD_LABELS = {
+  ROUND_ROBIN: 'Xoay vòng',
+  WEIGHTED: 'Theo trọng số',
+  LEAST_LOADED: 'Ít lead nhất',
+  MANUAL: 'Giao tay',
+  TRANSFER: 'Chuyển giao',
+  CUSTOMER_OWNER: 'Sales phụ trách khách',
+  PREVIOUS_OWNER: 'Sales cũ',
+} as const;
+
+export const CALL_RESULT_LABELS = {
+  ANSWERED: 'Nghe máy',
+  NO_ANSWER: 'Không nghe',
+  CALL_BACK: 'Hẹn gọi lại',
+} as const;

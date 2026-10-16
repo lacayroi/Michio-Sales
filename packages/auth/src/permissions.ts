@@ -48,6 +48,8 @@ export const PERMISSIONS = {
   'settings.manage': { OWNER: A, MANAGER: A },
   'target.manage': { OWNER: A, MANAGER: A },
   'user.manage': { OWNER: A },
+  'user.view': { OWNER: A, MANAGER: A }, // 6.1: Manager mở màn Người dùng để đặt lại mật khẩu
+  'user.resetPassword': { OWNER: A, MANAGER: A },
   'transfer.manage': { OWNER: A, MANAGER: A },
   'import.manage': { OWNER: A, MANAGER: A },
   'integration.manage': { OWNER: A },

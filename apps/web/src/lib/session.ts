@@ -10,6 +10,7 @@ export interface CurrentUser extends AuthUser {
   email: string;
   fullName: string;
   phone: string | null;
+  mustChangePassword: boolean;
 }
 
 /** Loads the signed-in user from DB on every request so deactivation/role changes apply immediately. */
@@ -19,7 +20,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   if (!claims) return null;
   const user = await prisma.user.findFirst({
     where: { id: claims.userId, orgId: claims.orgId, deletedAt: null, status: { not: 'INACTIVE' } },
-    select: { id: true, orgId: true, role: true, status: true, email: true, fullName: true, phone: true, deletedAt: true },
+    select: { id: true, orgId: true, role: true, status: true, email: true, fullName: true, phone: true, deletedAt: true, mustChangePassword: true },
   });
   return user;
 });

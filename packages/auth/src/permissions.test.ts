@@ -35,6 +35,8 @@ const EXPECTED: Record<Action, [Cell, Cell, Cell, Cell, Cell]> = {
   'settings.manage':         ['ALL', 'ALL', '-',   '-',   '-'  ],
   'target.manage':           ['ALL', 'ALL', '-',   '-',   '-'  ],
   'user.manage':             ['ALL', '-',   '-',   '-',   '-'  ], // Quản lý người dùng
+  'user.view':               ['ALL', 'ALL', '-',   '-',   '-'  ], // 6.1 (SPEC 1.1): Manager đặt lại mật khẩu trong màn Người dùng
+  'user.resetPassword':      ['ALL', 'ALL', '-',   '-',   '-'  ],
   'transfer.manage':         ['ALL', 'ALL', '-',   '-',   '-'  ], // Chuyển giao hàng loạt
   'import.manage':           ['ALL', 'ALL', '-',   '-',   '-'  ],
   'integration.manage':      ['ALL', '-',   '-',   '-',   '-'  ], // Cấu hình tích hợp
@@ -61,7 +63,7 @@ describe('permission matrix (SPEC §3)', () => {
     expect(can(role, action)).toBe(cell !== '-');
   });
 
-  it('MANAGER = OWNER except integrations, users, deletion (SPEC 1.5) and product edits (§8)', () => {
+  it('MANAGER = OWNER except integrations, user admin, deletion (SPEC 1.5) and product edits (§8)', () => {
     const differing = ACTIONS.filter((a) => scopeOf('OWNER', a) !== scopeOf('MANAGER', a)).sort();
     expect(differing).toEqual(['integration.manage', 'product.update', 'record.delete', 'user.manage'].sort());
   });

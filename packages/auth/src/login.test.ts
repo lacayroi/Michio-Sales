@@ -28,6 +28,7 @@ beforeAll(async () => {
     maxOpenLeads: 40,
     zaloBotChatId: null,
     lastLoginAt: null,
+    mustChangePassword: false,
     createdAt: new Date(),
     updatedAt: new Date(),
     deletedAt: null,

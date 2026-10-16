@@ -4,14 +4,26 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./runtime": "./src/runtime.ts"
   },
   "scripts": {
     "lint": "eslint src",
     "typecheck": "tsc",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
-    "@michio/db": "workspace:*"
+    "@michio/auth": "workspace:*",
+    "@michio/db": "workspace:*",
+    "@michio/shared": "workspace:*",
+    "bullmq": "^5.81.5",
+    "exceljs": "^4.4.0",
+    "ioredis": "^5.11.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@testcontainers/postgresql": "^12.2.1",
+    "vitest": "^3.2.7"
   }
 }

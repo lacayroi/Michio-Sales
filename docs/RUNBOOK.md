@@ -22,6 +22,10 @@ docker compose down -v          # xóa cả dữ liệu
 ## Kiểm thử
 ```bash
 pnpm lint && pnpm typecheck && pnpm test
+pnpm test:integration          # Postgres thật qua testcontainers (cần Docker truy cập được từ Node)
+# Docker trong WSL / không có testcontainers: dùng một database riêng tên chứa "test"
+#   docker compose exec postgres psql -U michio -d michio_sales -c "CREATE DATABASE michio_test"
+#   TEST_DATABASE_URL=postgresql://michio:michio@localhost:5432/michio_test pnpm test:integration
 pnpm --filter @michio/web build && pnpm db:seed && pnpm test:e2e   # cần Postgres/Redis đang chạy
 ```
 Lần đầu chạy e2e: `pnpm --filter @michio/web exec playwright install chromium`.
@@ -31,3 +35,10 @@ Lần đầu chạy e2e: `pnpm --filter @michio/web exec playwright install chro
 - **`/health` báo worker không có heartbeat**: worker ghi `worker:heartbeat` mỗi 60 giây; kiểm tra `docker compose logs worker`.
 
 _Backup, khôi phục, HTTPS (Caddy) sẽ bổ sung ở M6._
+
+## Lead & chia lead (M1)
+- **Lead không được chia / nằm "Chờ giao"**: xem màn Chia lead → "Thử luật" để biết vì sao từng sales bị loại (bận, nghỉ phép, đủ lead mở, đã trả lead). Kiểm tra có luật đang bật.
+- **Hạn nhận không bị thu hồi**: worker phải chạy (`/api/v1/health` → `worker.ok`). Job `sla-sweeper` chạy mỗi phút sẽ thu hồi mọi assignment quá hạn còn sót.
+- **Website không gửi được lead**: kiểm tra API key còn hiệu lực (Cài đặt → API key) và thử `curl` theo `docs/wordpress-snippet.md`. 429 = quá 60 yêu cầu/phút/key.
+- **Lịch nghỉ lễ năm mới**: Tết, ngày nghỉ bù, ngày liền kề Quốc khánh phải được Owner thêm và xác nhận trong Cài đặt → Ngày lễ (trang chủ Owner nhắc tới khi xác nhận).
+- Sau `pnpm db:seed`, các lead "Chờ nhận" trong dữ liệu mẫu sẽ bị sweeper thu hồi và chia lại sau 10 phút nếu worker đang chạy — đó là hành vi đúng.

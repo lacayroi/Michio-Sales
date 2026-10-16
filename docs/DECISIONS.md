@@ -59,3 +59,36 @@ Migration `audit_log_append_only` thêm trigger chặn `UPDATE`/`DELETE` trên `
 
 ## D-011 · Đường dẫn màn hình tiếng Việt không dấu (M0)
 `/leads`, `/hop-thu`, `/khach-hang`, `/khach-can-cham`, `/bao-gia`, `/don-hang`, `/viec-cua-toi`, `/bao-cao`, `/san-pham`, `/chia-lead`, `/chuyen-giao`, `/nguoi-dung`, `/cai-dat`, `/audit-log`, `/ho-so`, `/khong-co-quyen`. API giữ tiếng Anh theo §8.
+
+## D-012 · Chia lead đồng bộ trong request, worker lo hạn & quét (M1)
+SPEC 6.3.4 đặt engine chia trong queue `assignment`. Đã chọn: `intakeLead` chia lead **ngay trong transaction tạo lead** (cần để `POST /public/leads` trả `assignedTo` theo Phụ lục B và đạt "< 10 giây"). Worker xử lý `sla-check` (job trễ theo `acceptDeadline`, kèm `warn` 3 phút trước hạn), `sla-sweeper` mỗi phút (lưới an toàn) và `out-of-hours-release` 08:00 T2–T7. Queue `assignment` để dành cho kênh vào qua webhook (M3).
+- Khóa: `pg_advisory_xact_lock` theo khóa chống trùng (SĐT/email/identity) → mã lead của org → luật. Thứ tự cố định nên không deadlock. 90 lead song song → 30/30/30 (test).
+- Hiệu ứng ngoài DB (SSE qua Redis pub/sub, job BullMQ) chạy **sau khi commit** (`EffectBuffer`); mất một hiệu ứng thì sweeper / tải lại trang bù.
+
+## D-013 · Diễn giải luật chia (M1)
+- "Thu hồi tối đa 3 lần": được chia lại tối đa `maxReassign` lần; lần thu hồi/trả lại thứ `maxReassign + 1` → hàng chờ + báo Owner/Manager. Trả lại cũng tính vào số lần.
+- Người đã trả/bị thu hồi một lead không bao giờ được chia lại chính lead đó (6.3.3), kể cả qua luật kế tiếp.
+- Khách đã mua (`orderCount > 0`) → `CUSTOMER_OWNER`, vẫn có bước Nhận + hạn; quá hạn → xoay vòng (loại sales phụ trách). Chỉ bỏ qua sales phụ trách khi `INACTIVE` như SPEC.
+- Khách tiềm năng (`PROSPECT`) đi theo lead: giao lead → đổi `Customer.ownerId` (để Sales thấy hồ sơ qua `scopeFilter`). Khách đã có đơn giữ chủ tới khi chuyển giao (M5).
+- Giao tay/chuyển bởi Owner/Manager: assignment `ACCEPTED` ngay (không cần bấm Nhận), method `MANUAL` (lead chưa có người) hoặc `TRANSFER`.
+- Cuộc gọi/gặp khách đầu tiên của sales được giao = liên hệ đầu tiên (FRT) và tự "Nhận" nếu còn chờ.
+- Quá hạn liên hệ đầu tiên: cảnh báo đúng 1 lần (đánh dấu bằng Activity `SYSTEM/CONTACT_OVERDUE`).
+- `outOfHoursMode = HOLD`: lead giữ trạng thái `NEW`, job 08:00 chia (bỏ qua ngày lễ). `UNASSIGNED` = hàng chờ giao tay.
+
+## D-014 · SALES tạo lead (M1)
+§3 "Tạo lead: SALES tự giao cho mình" mâu thuẫn với 5.3 chế độ A (người trực Zalo công ty có thể là sales, lead cần chia xoay vòng). Mặc định SALES giữ lead (đã nhận); ô "Chia xoay vòng cho sales khác" trong Lead nhanh đưa lead vào luật chia. `POST /leads/quick` nhận thêm `assign: 'auto' | 'self'`.
+
+## D-015 · Import Excel không thêm bảng (M1)
+§7 không có model `Import`: bản xem trước tính lại mỗi lần upload; khi xác nhận, các dòng hợp lệ vào job BullMQ `import`, `GET /imports/:id` đọc trạng thái/tiến độ từ job (giữ 7 ngày). Ghi theo lô 250 dòng (2.000 dòng ≈ 4–5 giây). Lead import không có hạn nhận/liên hệ và không bắn thông báo từng lead — mỗi sales nhận 1 thông báo tổng.
+
+## D-016 · `User.mustChangePassword`, quyền `user.view` / `user.resetPassword` (M1)
+SPEC 6.1 (1.1) "bắt đổi ở lần đăng nhập sau" cần cờ trên `User` → migration `user_must_change_password`. Manager vào màn Người dùng chỉ để đặt lại mật khẩu (tạo/sửa/khóa vẫn là Owner theo §3) và không đặt lại được mật khẩu Owner.
+
+## D-017 · Kiểm thử tích hợp (M1)
+`pnpm test:integration` dùng testcontainers (SPEC §12). Khi Node không tới được Docker (Docker trong WSL trên Windows), đặt `TEST_DATABASE_URL` tới database có tên chứa `test`; global setup chỉ `migrate deploy`, không xóa dữ liệu (mỗi test tạo org riêng).
+
+## D-018 · Build Next.js trên Windows (M1)
+`output: 'standalone'` cần tạo symlink; Windows không bật Developer Mode báo EPERM. `next.config.ts` chỉ bật standalone ngoài Windows; Docker image (Linux) không đổi.
+
+## D-019 · API & màn hình bổ sung ngoài §8 (M1)
+`GET /customers/:id/timeline`, `GET /customers/:id/merge-suggestions`, `GET/PUT /working-calendar`, `POST /holidays/confirm`, `GET/PUT /company`, `POST /me/password`, `GET /imports/customers` (file mẫu). Trang `/leads/[id]`, `/khach-hang/[id]`, `/khach-hang/import`, `/doi-mat-khau`. `POST /customers` đi qua cùng luồng tiếp nhận (chống trùng) và trả cả `customerId`, `leadId`.

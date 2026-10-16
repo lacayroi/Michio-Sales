@@ -20,10 +20,10 @@ const ROLES = [
     role: 'Quản lý',
     menu: [
       'Trang chủ', 'Lead', 'Hộp thư', 'Pipeline', 'Khách hàng', 'Khách cần chăm', 'Báo giá', 'Đơn sỉ',
-      'Việc của tôi', 'Báo cáo', 'Sản phẩm & bảng giá', 'Chia lead', 'Chuyển giao', 'Cài đặt & Tích hợp',
-      'Audit log', 'Hồ sơ',
+      'Việc của tôi', 'Báo cáo', 'Sản phẩm & bảng giá', 'Chia lead', 'Chuyển giao', 'Người dùng',
+      'Cài đặt & Tích hợp', 'Audit log', 'Hồ sơ',
     ],
-    forbidden: ['/nguoi-dung'],
+    forbidden: [],
   },
   {
     email: 'sale1@michio.local',

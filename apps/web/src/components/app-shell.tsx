@@ -8,6 +8,8 @@ import { type ReactNode, useEffect, useState } from 'react';
 import type { NavItem } from '@/lib/nav';
 import { cn } from '@/lib/utils';
 import { NavIcon } from './nav-icon';
+import { NotificationBell } from './notification-bell';
+import { QuickLeadButton } from './quick-lead';
 import { UserMenu, type UserMenuProps } from './user-menu';
 
 const GROUP_LABELS: Record<NavItem['group'], string | null> = { main: null, admin: 'Quản trị', account: null };
@@ -48,7 +50,18 @@ function NavList({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => v
   );
 }
 
-export function AppShell({ items, user, children }: { items: NavItem[]; user: UserMenuProps; children: ReactNode }) {
+export function AppShell({
+  items,
+  user,
+  quickLead,
+  children,
+}: {
+  items: NavItem[];
+  user: UserMenuProps;
+  /** null = no "+ Lead nhanh" (no lead.create permission) */
+  quickLead: { isSales: boolean } | null;
+  children: ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   useEffect(() => setOpen(false), [pathname]);
@@ -70,7 +83,9 @@ export function AppShell({ items, user, children }: { items: NavItem[]; user: Us
           <Image src="/brand/logo.png" alt="Michio" width={104} height={40} priority className="h-9 w-auto" />
           <span className="hidden text-sm font-semibold text-muted-foreground sm:inline">Sales Hub</span>
         </Link>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1 sm:gap-2">
+          {quickLead && <QuickLeadButton isSales={quickLead.isSales} />}
+          <NotificationBell />
           <UserMenu {...user} />
         </div>
       </header>
