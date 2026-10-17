@@ -4,6 +4,12 @@ import {
   type ChannelInboundJob,
   type ChannelOutboundJob,
   checkFacebookTokens,
+  createReorderReminders,
+  notifyAtRisk,
+  refreshLifecycles,
+  runTransfer,
+  type TransferJobData,
+  warnStaleLeads,
   createS3Storage,
   createWooClientFor,
   expireQuotes,
@@ -111,6 +117,25 @@ const systemWorker = new Worker(
         for (const orgId of await orgIds()) {
           const r = await checkFacebookTokens(messengerRuntime, orgId);
           if (r.some((x) => !x.ok)) log.warn({ jobId: job.id, orgId, pages: r }, 'facebook-token-check');
+        }
+        return;
+      case 'customer-lifecycle': // 01:00 daily: AT_RISK / DORMANT as time passes (SPEC 6.5, §9)
+        for (const orgId of await orgIds()) {
+          const r = await refreshLifecycles(systemCtx(orgId));
+          await notifyAtRisk(systemCtx(orgId), r.atRisk);
+          log.info({ jobId: job.id, orgId, checked: r.checked, changed: r.changed, atRisk: r.atRisk.length }, 'customer-lifecycle');
+        }
+        return;
+      case 'reorder-reminder': // 07:30 T2–T7 (SPEC 6.8)
+        for (const orgId of await orgIds()) {
+          const r = await createReorderReminders(systemCtx(orgId));
+          log.info({ jobId: job.id, orgId, ...r }, 'reorder-reminder');
+        }
+        return;
+      case 'stale-lead': // hourly (SPEC 6.9)
+        for (const orgId of await orgIds()) {
+          const r = await warnStaleLeads(systemCtx(orgId));
+          if (r.warned) log.info({ jobId: job.id, orgId, ...r }, 'stale-lead');
         }
         return;
       case 'quote-expiry': // hourly: SENT quotes past validUntil → EXPIRED (SPEC §9)
@@ -255,6 +280,19 @@ const wooWorker = new Worker<WooSyncJob>(
   { connection, concurrency: 1 },
 );
 
+// ---- Chuyển giao (SPEC 6.10): background job with progress ----
+const transferWorker = new Worker<TransferJobData>(
+  QUEUES.transfer,
+  async (job) => {
+    const actor = await prisma.user.findUniqueOrThrow({ where: { id: job.data.actorId } });
+    const ctx: ServiceContext = { ...systemCtx(job.data.orgId), actor, via: 'WEB' };
+    const r = await runTransfer(ctx, job.data.input, (done, total) => job.updateProgress({ done, total }));
+    log.info({ jobId: job.id, orgId: job.data.orgId, customers: r.customers, leads: r.leads, tasks: r.tasks }, 'transfer done');
+    return r;
+  },
+  { connection, concurrency: 1 },
+);
+
 // getUpdates long polling for machines without a public HTTPS webhook (ZALO_BOT_POLLING=true, live bot).
 let polling = process.env.ZALO_BOT_POLLING === 'true' && bot?.mode === 'live';
 async function pollLoop() {
@@ -272,7 +310,7 @@ async function pollLoop() {
   }
 }
 
-const workers = [slaWorker, systemWorker, importWorker, botInboundWorker, botNotifyWorker, channelInboundWorker, channelOutboundWorker, quotePdfWorker, wooWorker];
+const workers = [slaWorker, systemWorker, importWorker, botInboundWorker, botNotifyWorker, channelInboundWorker, channelOutboundWorker, quotePdfWorker, wooWorker, transferWorker];
 for (const w of workers) {
   w.on('failed', (job, err) => log.error({ queue: w.name, jobId: job?.id, err }, 'job failed'));
 }
@@ -281,6 +319,9 @@ await systemQueue.upsertJobScheduler('heartbeat', { every: 60_000 }, { name: 'he
 await systemQueue.upsertJobScheduler('sla-sweeper', { every: 60_000 }, { name: 'sla-sweeper' });
 await systemQueue.upsertJobScheduler('out-of-hours-release', { pattern: '0 8 * * 1-6', tz: 'Asia/Ho_Chi_Minh' }, { name: 'out-of-hours-release' });
 await systemQueue.upsertJobScheduler('facebook-token-check', { pattern: '0 7 * * *', tz: 'Asia/Ho_Chi_Minh' }, { name: 'facebook-token-check' });
+await systemQueue.upsertJobScheduler('customer-lifecycle', { pattern: '0 1 * * *', tz: 'Asia/Ho_Chi_Minh' }, { name: 'customer-lifecycle' });
+await systemQueue.upsertJobScheduler('reorder-reminder', { pattern: '30 7 * * 1-6', tz: 'Asia/Ho_Chi_Minh' }, { name: 'reorder-reminder' });
+await systemQueue.upsertJobScheduler('stale-lead', { pattern: '20 * * * *', tz: 'Asia/Ho_Chi_Minh' }, { name: 'stale-lead' });
 await systemQueue.upsertJobScheduler('quote-expiry', { pattern: '5 * * * *', tz: 'Asia/Ho_Chi_Minh' }, { name: 'quote-expiry' });
 await systemQueue.upsertJobScheduler('woo-sync-tick', { pattern: '15 * * * *', tz: 'Asia/Ho_Chi_Minh' }, { name: 'woo-sync-tick' });
 await systemQueue.upsertJobScheduler('task-reminder', { every: 60_000 }, { name: 'task-reminder' });

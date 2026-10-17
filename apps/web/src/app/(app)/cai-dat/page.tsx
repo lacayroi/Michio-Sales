@@ -1,5 +1,5 @@
 import { can } from '@michio/auth/permissions';
-import { Bot, Building2, CalendarDays, Clock, Facebook, KeyRound, MessageSquareText, ShoppingBag, SplitSquareHorizontal } from 'lucide-react';
+import { Bot, Building2, Repeat2, CalendarDays, Clock, Facebook, KeyRound, MessageSquareText, ShoppingBag, SplitSquareHorizontal } from 'lucide-react';
 import Link from 'next/link';
 import { requireUser } from '@/lib/session';
 
@@ -9,6 +9,7 @@ export default async function SettingsPage() {
   const user = await requireUser('settings.manage', 'integration.manage');
   const items = [
     can(user.role, 'settings.manage') && { href: '/cai-dat/cong-ty', icon: Building2, title: 'Thông tin công ty', desc: 'Tên, địa chỉ, hotline, tài khoản, điều kiện in trên PDF báo giá' },
+    can(user.role, 'settings.manage') && { href: '/cai-dat/tu-dong', icon: Repeat2, title: 'Quy tắc tự động', desc: 'Follow-up báo giá, nhắc tái đặt, lead im lặng, ngưỡng chu kỳ' },
     can(user.role, 'settings.manage') && { href: '/cai-dat/gio-lam-viec', icon: Clock, title: 'Giờ làm việc', desc: 'Khung giờ T2–T7 dùng để tính thời hạn nhận và liên hệ lead' },
     can(user.role, 'settings.manage') && { href: '/cai-dat/ngay-le', icon: CalendarDays, title: 'Ngày lễ', desc: 'Lịch nghỉ dùng để tính thời hạn nhận và liên hệ lead' },
     can(user.role, 'assignmentRule.manage') && { href: '/chia-lead', icon: SplitSquareHorizontal, title: 'Chia lead & thời hạn', desc: 'Luật xoay vòng, thời hạn nhận, lead ngoài giờ' },

@@ -35,3 +35,8 @@ export * from './orders';
 export * from './quotes';
 export * from './deals';
 export * from './catalog';
+export * from './metrics';
+export * from './care';
+export * from './reports';
+export * from './transfers';
+export * from './governance';
