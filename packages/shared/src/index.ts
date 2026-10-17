@@ -5,3 +5,4 @@ export * from './brand';
 export * from './time';
 export * from './settings';
 export * from './quick-reply';
+export * from './documents';

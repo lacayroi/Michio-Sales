@@ -9,7 +9,7 @@ import {
 } from '@michio/channels';
 import { Queue } from 'bullmq';
 import type { Redis } from 'ioredis';
-import type { Effects } from './context';
+import type { Effects, QuotePdfJob } from './context';
 import { type AppEvent, eventChannel } from './events';
 
 export const QUEUES = {
@@ -20,7 +20,17 @@ export const QUEUES = {
   zaloBotNotify: 'zalo-bot-notify',
   channelInbound: 'channel-inbound',
   channelOutbound: 'channel-outbound',
+  quotePdf: 'quote-pdf',
+  wooSync: 'woo-product-sync',
 } as const;
+
+export interface WooSyncJob {
+  orgId: string;
+  full?: boolean;
+  /** Webhook product.updated: just this product. */
+  wooProductId?: number;
+  actorId?: string | null;
+}
 
 export interface ChannelInboundJob {
   webhookEventId: string;
@@ -52,11 +62,16 @@ export interface ZaloBotNotifyJob {
 
 const NOTIFY_JOB = { removeOnComplete: 5000, removeOnFail: 5000, attempts: 5, backoff: { type: 'exponential', delay: 10_000 } };
 
-export function createRedisEffects(connection: Redis): Effects & { slaQueue: Queue; notifyQueue: Queue; outboundQueue: Queue; close(): Promise<void> } {
+export function createRedisEffects(connection: Redis): Effects & { slaQueue: Queue; notifyQueue: Queue; outboundQueue: Queue; pdfQueue: Queue; close(): Promise<void> } {
   const slaQueue = new Queue(QUEUES.slaCheck, { connection });
   const notifyQueue = new Queue<ZaloBotNotifyJob>(QUEUES.zaloBotNotify, { connection });
   const outboundQueue = new Queue<ChannelOutboundJob>(QUEUES.channelOutbound, { connection });
+  const pdfQueue = new Queue<QuotePdfJob>(QUEUES.quotePdf, { connection });
   return {
+    pdfQueue,
+    async renderQuotePdf(job) {
+      await pdfQueue.add('render', job, { attempts: 3, backoff: { type: 'exponential', delay: 5000 }, removeOnComplete: 1000, removeOnFail: 5000 });
+    },
     slaQueue,
     notifyQueue,
     outboundQueue,
@@ -78,7 +93,7 @@ export function createRedisEffects(connection: Redis): Effects & { slaQueue: Que
       await notifyQueue.addBulk(ids.map((notificationId) => ({ name: 'deliver', data: { notificationId }, opts: { ...NOTIFY_JOB, jobId: `n-${notificationId}` } })));
     },
     async close() {
-      await Promise.all([slaQueue.close(), notifyQueue.close(), outboundQueue.close()]);
+      await Promise.all([slaQueue.close(), notifyQueue.close(), outboundQueue.close(), pdfQueue.close()]);
     },
   };
 }

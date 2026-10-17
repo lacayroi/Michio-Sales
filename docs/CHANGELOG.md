@@ -1,5 +1,26 @@
 # Changelog
 
+## M4 — Sản phẩm, báo giá, đơn sỉ (17/10/2026)
+
+**WooCommerce** (SPEC 5.6, đối chiếu tài liệu — D-036): `packages/integrations/woocommerce` (REST wc/v3, khóa Read, phân trang, `modified_after`, chữ ký webhook). Job `woo-product-sync`: lần đầu toàn bộ, sau đó phần thay đổi mỗi 6 giờ (`woo.syncIntervalHours`), nút "Đồng bộ ngay", webhook `POST /api/v1/webhooks/woocommerce`. Lấy mã, tên, danh mục, giá lẻ, ảnh, link, còn/hết hàng, thương hiệu; sản phẩm thiếu SKU → `woo-{id}` + cờ "cần bổ sung mã". Cài đặt → **WooCommerce** (khóa lưu mã hóa). Chế độ demo có catalog mô phỏng.
+
+**S13 Sản phẩm & bảng giá** (Owner/Manager): danh mục tìm không dấu, lọc danh mục/còn hàng/cần bổ sung mã; Owner sửa quy cách thùng, đơn vị, ẩn/hiện khi báo giá, mã. Bảng giá sỉ theo cấp (SI_1, DAI_LY…): giá, SL tối thiểu, **bậc giá theo số lượng**, hiệu lực từ–đến; sửa trực tiếp hoặc **xuất / nhập Excel** (lỗi theo dòng, có lỗi thì không đổi gì).
+
+**S9 Báo giá** (6.6): trình tạo báo giá bàn phím trước — gõ tên/mã không dấu, ↑↓ chọn, Enter thêm, ảnh + quy cách + cờ hết hàng / chưa có giá sỉ / dưới SL tối thiểu; **giá tự lấy theo cấp khách và bậc số lượng** (`POST /pricing/resolve`); chiết khấu thêm theo dòng, vượt `quote.maxExtraDiscountPct` → chờ Owner duyệt. Gửi: qua **Messenger** (PDF vào hộp thư khách, kiểm tra khung 24 giờ) hoặc tải PDF gửi Zalo. Gửi → deal sang "Đã gửi báo giá" + task **Follow-up sau 2 ngày làm việc** (không trùng). Khách đồng ý / từ chối, hết hạn tự động (job `quote-expiry` mỗi giờ), **chuyển thành đơn bằng 1 nút**.
+- **PDF báo giá sỉ** (`packages/pdf`, react-pdf + Be Vietnam Pro): logo góc trái, dải xanh, "BÁO GIÁ SỈ", thông tin công ty / khách / sales, bảng hàng (ảnh nhỏ, tên, SKU, quy cách, SL, đơn giá, CK, thành tiền), tổng, điều kiện, tài khoản; chân trang hotline, website, địa chỉ, số trang. Render ở job `quote-pdf` (worker), lưu S3 riêng tư, link chia sẻ có hạn.
+
+**S10 Đơn sỉ** (6.7): ghi nhận đơn (giá gợi ý theo cấp, sửa được, chiết khấu theo dòng, phí vận chuyển, thanh toán chuyển khoản / tiền mặt / công nợ); danh sách lọc trạng thái giao / thanh toán / ngày, tổng doanh số; kế toán – kho cập nhật **thanh toán** (một phần / đủ) và **giao hàng** (mã vận đơn), giao xong báo sales; **xuất Excel** (2 trang: đơn, dòng hàng) cho phần mềm kế toán. Đơn đầu tiên gán sales phụ trách vĩnh viễn; mỗi đơn / hủy đơn tính lại số đơn, doanh số, **chu kỳ tái đặt** (trung vị sau ≥ 3 đơn), **ngày nhắc tái đặt**, vòng đời khách. "**Tạo đơn lặp lại**" từ đơn cũ.
+
+**S7 Pipeline**: Kanban kéo-thả (Mới → Đã liên hệ → Tư vấn → Đã gửi báo giá → Chốt đơn / Không thành công), lead đang xử lý chưa có deal nằm ở "Mới"; thả vào "Chốt đơn" mở form tạo đơn; "Không thành công" bắt buộc lý do; dạng bảng; lọc theo sales; thẻ có ô "Chuyển sang…" cho điện thoại.
+
+**Hồ sơ khách**: nút Tạo báo giá / Ghi nhận đơn / Tạo đơn lặp lại; báo giá, đơn, **5 mặt hàng mua nhiều nhất** (`GET /customers/:id/top-products`); Owner/Manager gán bảng giá / cấp khách; chu kỳ tái đặt cố định tay hoặc tự tính. Cài đặt → **Thông tin công ty** (in trên PDF).
+
+**Dữ liệu**: migration `m4_quotes_orders` (sequence `quote_code_seq`, `order_code_seq`, chỉ mục). Seed đẩy sequence qua mã đã có.
+
+**Kiểm thử**: +13 unit (giá theo bậc, tổng tiền, ngày làm việc), +7 unit WooCommerce, +1 unit PDF (nhiều trang, font), +8 integration (giá theo cấp; **báo giá 20 dòng → duyệt → gửi → PDF → deal BAO_GIA → 1 task follow-up → đơn → NEW_CUSTOMER + nextReorderAt**; thanh toán/giao hàng theo quyền, hủy đơn tính lại; hết hạn; chu kỳ trung vị; pipeline; Excel bảng giá; đồng bộ Woo toàn bộ/phần thay đổi không trùng), +2 e2e (sales tạo **báo giá 20 dòng trong < 2 phút** bằng bàn phím → PDF thương hiệu → gửi → khách đồng ý → đơn → kế toán thu tiền & giao; Owner xem pipeline, xuất bảng giá, đồng bộ Woo).
+
+**Việc của Michio**: cấp khách & bảng giá sỉ thật (Excel theo mẫu xuất ra), quy cách thùng, điều kiện giao hàng/thanh toán, WooCommerce API key (Read), logo gốc độ phân giải cao (SPEC 15.6–15.9).
+
 ## M3 — Facebook (17/10/2026)
 
 **Kết nối Page** (SPEC 5.2, thông số Meta đối chiếu ngày 17/10/2026 — D-028)

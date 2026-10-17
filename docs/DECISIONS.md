@@ -191,3 +191,38 @@ Máy dev hiện tại không có `docker.exe` trên PATH của Windows (Docker c
 - Integration test: đặt `TEST_DATABASE_URL` tới một database trống (đã hỗ trợ từ M0), vd tạo `michio_test` trong Postgres của `docker compose`.
 - Test snippet WordPress: trên Windows nếu `docker` không chạy được thì gọi `wsl -e docker …` (`-e` để WSL không đưa lệnh qua shell, giữ nguyên `$` trong mã PHP).
 - Chromium mới trả về Promise từ `scrollIntoView()`: effect của React phải viết dạng khối, không `() => el.scrollIntoView()` (lỗi "destroy is not a function" chỉ thấy ở bản build).
+
+## D-036 · Thông số WooCommerce đã đối chiếu (M4)
+Đối chiếu tài liệu REST API WooCommerce (wc/v3) ngày 17/10/2026 (SPEC 0.1.5), gom trong `packages/integrations/src/woocommerce.ts` (`WOOCOMMERCE`):
+- Xác thực HTTP Basic (Consumer Key/Secret, quyền **Read**) qua HTTPS. Phân trang `page` (từ 1) + `per_page` (tối đa 100 theo WordPress REST), tổng trang ở header `X-WP-TotalPages`.
+- Đồng bộ phần thay đổi bằng `modified_after` (có từ WooCommerce 5.8) + `dates_are_gmt=true`; lùi lại 10 phút so với lần chạy trước để không mất thay đổi do lệch giờ. Lần đầu (hoặc "Đồng bộ lại toàn bộ") đọc hết.
+- Webhook: `X-WC-Webhook-Signature = base64(HMAC-SHA256(body thô, secret))`, so sánh hằng thời gian; khi tạo webhook WooCommerce gửi một request `webhook_id=…` không có chữ ký → trả 200. Webhook **không** ghi dữ liệu từ payload mà xếp một lượt đồng bộ phần thay đổi (gộp theo phút) — một đường xử lý duy nhất, chống giả mạo nội dung.
+- Ghép sản phẩm: theo `wooId`, rồi theo SKU (để nối sản phẩm đã có / nhập tay); không có SKU → `woo-{id}` + `needsSku`. Khi website bổ sung SKU thì thay mã tạm; mã đã sửa tay trong Hub được giữ. Đồng bộ **không** đụng các trường sỉ (quy cách thùng, đơn vị, ẩn/hiện khi báo giá) và không lấy giá sỉ (SPEC 5.6).
+- Khóa lưu mã hóa trong `ChannelAccount(type=WOOCOMMERCE).credentials`, ưu tiên hơn biến môi trường `WOO_*`. Trạng thái lần đồng bộ (thời điểm, số tạo/cập nhật, lỗi) nằm ở `ChannelAccount.meta`. Lỗi → `ERROR` + báo Owner một lần cho mỗi chuỗi lỗi. Job `woo-sync-tick` mỗi giờ chạy đồng bộ khi đã quá `woo.syncIntervalHours` (6).
+
+## D-037 · Giá sỉ, báo giá, duyệt chiết khấu (M4)
+- Bảng giá áp dụng cho khách: `Customer.priceListId` (gán riêng) → bảng giá có `tier` = cấp khách → bảng `SI_1` → bảng đầu tiên; chỉ xét bảng còn hiệu lực. Bậc số lượng: bậc có `minQty` lớn nhất ≤ SL. Dưới SL tối thiểu vẫn báo giá nhưng gắn cờ.
+- Sản phẩm chưa có trong bảng giá sỉ: tạm dùng giá lẻ, gắn cờ "chưa có giá sỉ" trên trình tạo và trong dòng báo giá (`priceSource = RETAIL`) để sales hỏi Owner — không chặn báo giá.
+- Sales không sửa đơn giá trên báo giá, chỉ thêm **chiết khấu %** theo dòng; vượt `quote.maxExtraDiscountPct` → `PENDING_APPROVAL`, Owner/Manager nhận thông báo, duyệt xong mới gửi được. Người có quyền duyệt tự tạo thì không cần duyệt. Sửa báo giá sẽ xóa duyệt và PDF cũ.
+- Hiệu lực tính lại từ lúc **gửi lần đầu** (hết ngày thứ `quote.validDays`); job `quote-expiry` mỗi giờ chuyển `EXPIRED`.
+- Gửi lần đầu: deal sang `BAO_GIA` (không lùi giai đoạn; tạo deal cho lead đang xử lý nếu chưa có), một task "Follow-up báo giá" sau `quote.followUpBusinessDays` ngày làm việc (`autoRuleKey = quote-followup:<id>` nên gửi lại không tạo trùng). Khách đồng ý / từ chối / chuyển đơn thì task tự xong.
+- Gửi qua Messenger chỉ khi còn khung nhắn; ngoài khung trả lỗi kèm gợi ý tải PDF gửi Zalo. "Tải PDF" = `GET /quotes/:id/pdf?download=1`.
+- "Chuyển thành đơn" chấp nhận cả báo giá `SENT` (coi như khách đồng ý), mỗi báo giá tối đa một đơn. "Tạo đơn lặp lại" (6.8) tạo **báo giá nháp** từ đơn cũ với giá hôm nay (giá có thể đã đổi), không tạo thẳng đơn.
+
+## D-038 · PDF báo giá render trong worker (M4)
+`@react-pdf/renderer` + font Be Vietnam Pro TTF (SIL OFL, `packages/pdf/fonts`) và logo (`packages/pdf/assets`). Font của `@fontsource` tách subset Latin/Việt nên không dùng được cho PDF. Việc render chạy ở job `quote-pdf` của worker (SPEC §9), không trong Next.js: bundle web không phải mang react-pdf/đường dẫn font. `GET /quotes/:id/pdf` dùng PDF đã lưu (`Quote.pdfKey`, S3 riêng tư); nếu chưa có (vừa sửa) thì xếp job và chờ (~1 giây). Link gửi khách là link ký có hạn (D-031) tới hết hiệu lực báo giá + 30 ngày. Ảnh sản phẩm được tải trước (4 giây/ảnh, chỉ PNG/JPEG); lỗi ảnh không chặn PDF.
+
+## D-039 · Đơn sỉ, chỉ số khách và chu kỳ tái đặt (M4)
+- Mỗi lần tạo / hủy đơn, `recomputeCustomerStats` tính lại từ các đơn không hủy: số đơn, doanh số, đơn đầu/cuối, chu kỳ (≥ 3 đơn: trung vị khoảng cách, làm tròn, kẹp 7–120 ngày; ít hơn: `reorder.defaultCycleDays`; chu kỳ đã khóa thì giữ), `nextReorderAt = lastOrderAt + chu kỳ`, lifecycle. Cùng hàm sẽ dùng cho job `customer-lifecycle` (M5).
+- Đơn đầu tiên gán sales phụ trách vĩnh viễn nếu khách chưa có; tạo đơn chốt deal đang mở (`CHOT`, lead `WON`). Kéo thẻ Kanban sang "Chốt đơn" mở form tạo đơn thay vì đổi giai đoạn suông (6.5 "Sang CHOT → tạo Đơn sỉ").
+- Chiết khấu trên đơn là số tiền theo dòng (đơn ghi nhận thực tế); đơn giá gợi ý theo bảng giá, sửa được.
+- Chỉ Owner/Manager/Support cập nhật thanh toán & giao hàng (§3). Giao xong → báo sales. Đơn đã hủy không cập nhật được nữa.
+- Số chứng từ `BG-yyyy-NNNNNN` / `DH-yyyy-NNNNNN` từ hai sequence Postgres (giống D-012), năm theo giờ Việt Nam.
+
+## D-040 · Pipeline Kanban (M4)
+Deal được tạo ở lần đổi giai đoạn đầu (bot `TRANGTHAI`, thẻ khách, Kanban, gửi báo giá). Để bảng phủ đủ việc đang làm, lead `IN_PROGRESS` chưa có deal hiện ở cột đầu ("Mới") với khóa `lead-<id>`; kéo đi sẽ tạo deal. Sang "Không thành công" bắt buộc chọn lý do (danh sách `LostReason`). Thẻ đã đóng hiện 30 ngày. Mỗi thẻ có ô "Chuyển sang…" thay cho kéo-thả trên điện thoại / bàn phím. Giá trị thẻ = báo giá lớn nhất đã gửi/được đồng ý của deal, không có thì `expectedAmount`.
+
+## D-041 · Thông tin công ty & cấp khách (M4)
+- `Organization.profile` (D-027 hẹn ở M4): tên, địa chỉ, hotline, Zalo, website, email, MST, tài khoản ngân hàng, **điều kiện mặc định** in trên báo giá. Màn Cài đặt → Thông tin công ty (Owner/Manager).
+- Cấp khách / bảng giá gán riêng chỉ Owner/Manager sửa (`priceList.manage`) trên hồ sơ khách. Tự xếp cấp theo doanh số 90 ngày (6.5) chưa làm vì tên và ngưỡng cấp còn `[CẦN XÁC NHẬN]`.
+- Chu kỳ tái đặt sửa tay → khóa (`reorderCycleLocked`); "Tự tính" mở khóa.

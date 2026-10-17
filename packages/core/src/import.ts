@@ -97,7 +97,7 @@ export async function buildImportTemplate(): Promise<Buffer> {
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
-function cellText(v: ExcelJS.CellValue): string {
+export function cellText(v: ExcelJS.CellValue): string {
   if (v == null) return '';
   if (v instanceof Date) return v.toISOString();
   if (typeof v === 'object') {
@@ -119,7 +119,7 @@ function parseDate(v: ExcelJS.CellValue): Date | null | 'invalid' {
   return date.getUTCMonth() === mo - 1 && date.getUTCDate() === d ? date : 'invalid';
 }
 
-function parseNumber(v: ExcelJS.CellValue): number | null | 'invalid' {
+export function parseNumber(v: ExcelJS.CellValue): number | null | 'invalid' {
   if (v == null || v === '') return null;
   if (typeof v === 'number') return v;
   const t = cellText(v).replace(/[.\s₫đ]/gi, '').replace(',', '.');

@@ -40,15 +40,21 @@ export const CustomerUpdateInput = z.object({
   zaloPhone: text(30),
   tags: z.array(z.string().max(40)).max(20).optional(),
   note: text(4000),
+  /** Owner/Manager only (priceList.manage): tier decides the price list (6.5). */
+  tier: z.string().trim().max(30).nullable().optional(),
+  priceListId: z.string().nullable().optional(),
+  /** Manual cycle locks it against automatic recalculation (6.8); null unlocks. */
+  reorderCycleDays: z.coerce.number().int().min(7).max(365).nullable().optional(),
 });
 
-const AUDITED_FIELDS = Object.keys(CustomerUpdateInput.shape) as (keyof z.infer<typeof CustomerUpdateInput>)[];
+const AUDITED_FIELDS = [...Object.keys(CustomerUpdateInput.shape), 'reorderCycleLocked', 'nextReorderAt'] as (keyof z.infer<typeof CustomerUpdateInput> | 'reorderCycleLocked' | 'nextReorderAt')[];
 
 export async function updateCustomer(ctx: ServiceContext, customerId: string, raw: z.input<typeof CustomerUpdateInput>) {
   const input = CustomerUpdateInput.parse(raw);
   const actor = ctx.actor;
   if (!actor) throw new DomainError('INVALID_STATE', 'Thiếu người thực hiện');
-  const data: Prisma.CustomerUpdateInput = { ...input };
+  const { tier, priceListId, reorderCycleDays, ...rest } = input;
+  const data: Prisma.CustomerUpdateInput = { ...rest };
   if (input.phone !== undefined) {
     const phone = input.phone ? normalizeVnPhone(input.phone) : null;
     if (input.phone && !phone) throw new DomainError('VALIDATION_ERROR', 'Số điện thoại không hợp lệ', { phone: ['Số điện thoại không hợp lệ'] });
@@ -61,6 +67,22 @@ export async function updateCustomer(ctx: ServiceContext, customerId: string, ra
     const c = await tx.customer.findFirst({ where: { id: customerId, orgId: ctx.orgId, deletedAt: null } });
     if (!c) throw notFound('khách hàng');
     assertAuthorized(actor, 'customer.update', c);
+    if (tier !== undefined || priceListId !== undefined) {
+      assertAuthorized(actor, 'priceList.manage');
+      if (tier !== undefined) data.tier = tier || null;
+      if (priceListId) {
+        const pl = await tx.priceList.findFirst({ where: { id: priceListId, orgId: ctx.orgId } });
+        if (!pl) throw notFound('bảng giá');
+        data.priceList = { connect: { id: pl.id } };
+        if (tier === undefined) data.tier = pl.tier;
+      } else if (priceListId === null) data.priceList = { disconnect: true };
+    }
+    if (reorderCycleDays !== undefined) {
+      const cycle = reorderCycleDays ?? c.reorderCycleDays;
+      data.reorderCycleDays = cycle;
+      data.reorderCycleLocked = reorderCycleDays !== null;
+      data.nextReorderAt = c.lastOrderAt ? new Date(c.lastOrderAt.getTime() + cycle * DAY) : null;
+    }
     if (data.phone) {
       const clash = await tx.customer.findFirst({ where: { orgId: ctx.orgId, phone: data.phone as string, deletedAt: null, id: { not: c.id } } });
       if (clash) throw new DomainError('CONFLICT', `SĐT đã thuộc khách "${clash.contactName}" — hãy dùng chức năng Gộp`, { customerId: clash.id });
