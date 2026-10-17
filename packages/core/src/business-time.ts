@@ -84,3 +84,17 @@ export function businessMinutesBetween(from: Date, to: Date, cal: BusinessCalend
   }
   return Math.round(total / 60_000);
 }
+
+/**
+ * Same wall-clock time `days` working days later (SPEC 6.6: follow-up "sau 2 ngày làm việc"),
+ * moved to the next working instant if that moment is outside working hours.
+ */
+export function addBusinessDays(start: Date, days: number, cal: BusinessCalendar): Date {
+  let t = start.getTime();
+  for (let counted = 0, i = 0; counted < days; i++) {
+    if (i > MAX_DAYS_SCANNED) throw new Error('No working day found in the calendar');
+    t += DAY_MS;
+    if (dayIntervals(vnMidnight(t), cal).length) counted++;
+  }
+  return addBusinessMinutes(new Date(t), 0, cal);
+}

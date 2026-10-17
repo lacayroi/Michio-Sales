@@ -4,6 +4,15 @@ import {
   type ChannelInboundJob,
   type ChannelOutboundJob,
   checkFacebookTokens,
+  createS3Storage,
+  createWooClientFor,
+  expireQuotes,
+  generateQuotePdf,
+  type QuotePdfJob,
+  sendQuotePdfToConversation,
+  syncWooProducts,
+  type WooSyncJob,
+  wooAccount,
   createFacebookClient,
   deliverOutboundMessage,
   type MessengerRuntime,
@@ -31,6 +40,7 @@ import {
   type ZaloBotNotifyJob,
 } from '@michio/core';
 import { prisma } from '@michio/db';
+import { renderQuotePdf } from '@michio/pdf';
 import { createServer } from 'node:http';
 import { Queue, UnrecoverableError, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
@@ -43,6 +53,7 @@ const bot = createZaloBotClient(connection);
 const appUrl = process.env.APP_URL ?? null;
 const botRuntime: BotRuntime = { db: prisma, effects, now: () => new Date() };
 const facebook = createFacebookClient(connection);
+const storage = createS3Storage();
 const messengerRuntime: MessengerRuntime | null = facebook ? { db: prisma, effects, now: () => new Date(), client: facebook, appId: process.env.FB_APP_ID ?? null } : null;
 
 const systemCtx = (orgId: string): ServiceContext => ({ db: prisma, effects, now: () => new Date(), actor: null, orgId, via: 'SYSTEM' });
@@ -100,6 +111,20 @@ const systemWorker = new Worker(
         for (const orgId of await orgIds()) {
           const r = await checkFacebookTokens(messengerRuntime, orgId);
           if (r.some((x) => !x.ok)) log.warn({ jobId: job.id, orgId, pages: r }, 'facebook-token-check');
+        }
+        return;
+      case 'quote-expiry': // hourly: SENT quotes past validUntil → EXPIRED (SPEC §9)
+        for (const orgId of await orgIds()) {
+          const r = await expireQuotes(systemCtx(orgId));
+          if (r.expired) log.info({ jobId: job.id, orgId, ...r }, 'quote-expiry');
+        }
+        return;
+      case 'woo-sync-tick': // hourly: run woo-product-sync when woo.syncIntervalHours has passed (SPEC 5.6)
+        for (const orgId of await orgIds()) {
+          const { 'woo.syncIntervalHours': hours } = await getSettings(prisma, orgId, ['woo.syncIntervalHours']);
+          const state = (await wooAccount(prisma, orgId))?.meta as { lastSyncAt?: string } | null;
+          const due = !state?.lastSyncAt || Date.now() - new Date(state.lastSyncAt).getTime() >= hours * 3600_000 - 5 * 60_000;
+          if (due) await wooQueue.add('sync', { orgId } satisfies WooSyncJob, { jobId: `woo-${orgId}-${Math.floor(Date.now() / 3600_000)}`, removeOnComplete: 100, removeOnFail: 500 });
         }
         return;
       case 'task-reminder': // every minute: task reminders, "còn 3 phút" warnings, morning digest (SPEC §9)
@@ -199,6 +224,37 @@ const channelOutboundWorker = new Worker<ChannelOutboundJob>(
   { connection, concurrency: 3 },
 );
 
+// ---- Quotes (SPEC 6.6) & WooCommerce (5.6) ----
+const quotePdfWorker = new Worker<QuotePdfJob>(
+  QUEUES.quotePdf,
+  async (job) => {
+    const r = await generateQuotePdf({ db: prisma, now: () => new Date() }, job.data.quoteId, renderQuotePdf, storage);
+    log.info({ jobId: job.id, quoteId: job.data.quoteId, size: r.size }, 'quote-pdf');
+    if (job.data.sendToConversationId && job.data.userId) {
+      const actor = await prisma.user.findUniqueOrThrow({ where: { id: job.data.userId } });
+      const q = await prisma.quote.findUniqueOrThrow({ where: { id: job.data.quoteId }, select: { orgId: true, validUntil: true } });
+      // Link valid until 30 days after the quote expires (customers reopen old quotes).
+      const ttl = Math.max(86_400, Math.floor((q.validUntil.getTime() - Date.now()) / 1000) + 30 * 86_400);
+      await sendQuotePdfToConversation({ ...systemCtx(q.orgId), actor, via: 'WEB' }, job.data.quoteId, job.data.sendToConversationId, ttl);
+    }
+    return r;
+  },
+  { connection, concurrency: 2 },
+);
+
+const wooQueue = new Queue<WooSyncJob>(QUEUES.wooSync, { connection });
+const wooWorker = new Worker<WooSyncJob>(
+  QUEUES.wooSync,
+  async (job) => {
+    const client = await createWooClientFor(prisma, job.data.orgId);
+    if (!client) return { skipped: 'not-configured' };
+    const r = await syncWooProducts({ db: prisma, effects, now: () => new Date() }, job.data.orgId, client, { full: job.data.full, actorId: job.data.actorId });
+    log.info({ jobId: job.id, orgId: job.data.orgId, ...r }, 'woo-product-sync');
+    return r;
+  },
+  { connection, concurrency: 1 },
+);
+
 // getUpdates long polling for machines without a public HTTPS webhook (ZALO_BOT_POLLING=true, live bot).
 let polling = process.env.ZALO_BOT_POLLING === 'true' && bot?.mode === 'live';
 async function pollLoop() {
@@ -216,7 +272,7 @@ async function pollLoop() {
   }
 }
 
-const workers = [slaWorker, systemWorker, importWorker, botInboundWorker, botNotifyWorker, channelInboundWorker, channelOutboundWorker];
+const workers = [slaWorker, systemWorker, importWorker, botInboundWorker, botNotifyWorker, channelInboundWorker, channelOutboundWorker, quotePdfWorker, wooWorker];
 for (const w of workers) {
   w.on('failed', (job, err) => log.error({ queue: w.name, jobId: job?.id, err }, 'job failed'));
 }
@@ -225,6 +281,8 @@ await systemQueue.upsertJobScheduler('heartbeat', { every: 60_000 }, { name: 'he
 await systemQueue.upsertJobScheduler('sla-sweeper', { every: 60_000 }, { name: 'sla-sweeper' });
 await systemQueue.upsertJobScheduler('out-of-hours-release', { pattern: '0 8 * * 1-6', tz: 'Asia/Ho_Chi_Minh' }, { name: 'out-of-hours-release' });
 await systemQueue.upsertJobScheduler('facebook-token-check', { pattern: '0 7 * * *', tz: 'Asia/Ho_Chi_Minh' }, { name: 'facebook-token-check' });
+await systemQueue.upsertJobScheduler('quote-expiry', { pattern: '5 * * * *', tz: 'Asia/Ho_Chi_Minh' }, { name: 'quote-expiry' });
+await systemQueue.upsertJobScheduler('woo-sync-tick', { pattern: '15 * * * *', tz: 'Asia/Ho_Chi_Minh' }, { name: 'woo-sync-tick' });
 await systemQueue.upsertJobScheduler('task-reminder', { every: 60_000 }, { name: 'task-reminder' });
 await connection.set('worker:heartbeat', new Date().toISOString(), 'EX', 180);
 log.info({ zaloBot: bot?.mode ?? 'disabled', facebook: facebook?.mode ?? 'disabled', polling }, 'worker started');
@@ -243,7 +301,7 @@ async function shutdown(signal: string) {
   polling = false;
   health?.close();
   await Promise.all(workers.map((w) => w.close()));
-  await Promise.all([systemQueue.close(), inboundQueue.close(), notifyQueue.close()]);
+  await Promise.all([systemQueue.close(), inboundQueue.close(), notifyQueue.close(), wooQueue.close()]);
   await effects.close();
   await connection.quit();
   await prisma.$disconnect();

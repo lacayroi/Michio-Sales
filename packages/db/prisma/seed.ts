@@ -558,6 +558,10 @@ async function main() {
     });
   }
 
+  // Document numbers continue after the seeded BG-/DH- codes (migration m4_quotes_orders).
+  await prisma.$executeRaw`SELECT setval('quote_code_seq', GREATEST(1, (SELECT count(*) FROM "Quote")))`;
+  await prisma.$executeRaw`SELECT setval('order_code_seq', GREATEST(1, (SELECT count(*) FROM "Order")))`;
+
   // ---------- targets ----------
   const month = `${NOW.getFullYear()}-${String(NOW.getMonth() + 1).padStart(2, '0')}`;
   await prisma.target.createMany({

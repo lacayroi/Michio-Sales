@@ -398,6 +398,7 @@ model Conversation {
 
   @@unique([channelAccountId, externalThreadId])
   @@index([orgId, lastMessageAt])
+  @@index([orgId, unreadCount])
   @@index([customerId])
 }
 
@@ -475,6 +476,7 @@ model Deal {
   orders     Order[]
 
   @@index([orgId, ownerId, stageId])
+  @@index([leadId])
 }
 
 model LostReason {
@@ -520,6 +522,8 @@ model Product {
 
   @@unique([orgId, sku])
   @@unique([orgId, wooId])
+  // Trigram search (migration m3_search). The f_unaccent(name) expression index exists only in SQL (D-032).
+  @@index([sku(ops: raw("gin_trgm_ops"))], type: Gin, map: "Product_sku_trgm_idx")
 }
 
 model PriceList {
@@ -584,6 +588,8 @@ model Quote {
 
   @@unique([orgId, code])
   @@index([orgId, ownerId, status])
+  @@index([orgId, customerId])
+  @@index([orgId, status, validUntil])
 }
 
 enum PaymentStatus {
@@ -640,6 +646,7 @@ model Order {
   @@unique([orgId, code])
   @@index([orgId, customerId, orderedAt])
   @@index([orgId, ownerId, orderedAt])
+  @@index([quoteId])
 }
 
 model OrderItem {

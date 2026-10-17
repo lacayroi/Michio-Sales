@@ -94,3 +94,28 @@ export const INTEREST_CATEGORY_LABELS: Record<string, string> = {
   HOUSEHOLD: 'Gia dụng',
   OTHER: 'Khác',
 };
+
+export const QUOTE_STATUS_LABELS = {
+  DRAFT: 'Nháp',
+  PENDING_APPROVAL: 'Chờ duyệt',
+  SENT: 'Đã gửi',
+  ACCEPTED: 'Khách đồng ý',
+  REJECTED: 'Khách từ chối',
+  EXPIRED: 'Hết hạn',
+} as const;
+
+export const PAYMENT_STATUS_LABELS = { UNPAID: 'Chưa thanh toán', PARTIAL: 'Thanh toán một phần', PAID: 'Đã thanh toán' } as const;
+
+export const DELIVERY_STATUS_LABELS = { PENDING: 'Chờ xử lý', PACKING: 'Đang đóng gói', SHIPPING: 'Đang giao', DELIVERED: 'Đã giao', CANCELLED: 'Đã hủy' } as const;
+
+export const PAYMENT_METHOD_LABELS = { BANK_TRANSFER: 'Chuyển khoản', CASH: 'Tiền mặt', CREDIT: 'Công nợ' } as const;
+
+export const TASK_TYPE_LABELS = {
+  CALL: 'Gọi điện',
+  MESSAGE: 'Nhắn tin',
+  SEND_QUOTE: 'Gửi báo giá',
+  FOLLOW_UP: 'Follow-up',
+  REORDER: 'Nhắc tái đặt',
+  MEETING: 'Gặp khách',
+  OTHER: 'Khác',
+} as const;

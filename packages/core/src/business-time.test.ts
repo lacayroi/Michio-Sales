@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addBusinessMinutes, type BusinessCalendar, businessMinutesBetween, isBusinessTime } from './business-time';
+import { addBusinessDays, addBusinessMinutes, type BusinessCalendar, businessMinutesBetween, isBusinessTime } from './business-time';
 
 // Michio default (SPEC A1): T2–T7 08:00–12:00, 13:30–17:30; Chủ nhật nghỉ.
 const weekly = [1, 2, 3, 4, 5, 6].map((dow) => ({
@@ -82,5 +82,19 @@ describe('isBusinessTime / businessMinutesBetween', () => {
     expect(businessMinutesBetween(vn('2026-10-17T20:00:00'), vn('2026-10-19T08:10:00'), cal)).toBe(10);
     expect(businessMinutesBetween(vn('2026-10-15T11:50:00'), vn('2026-10-15T13:40:00'), cal)).toBe(20);
     expect(businessMinutesBetween(vn('2026-10-15T10:00:00'), vn('2026-10-15T09:00:00'), cal)).toBe(0);
+  });
+});
+
+describe('addBusinessDays', () => {
+  const cal = { weekly: [1, 2, 3, 4, 5, 6].map((dow) => ({ dow, ranges: [['08:00', '12:00'], ['13:30', '17:30']] as [string, string][] })), holidays: new Set(['2026-10-20']) };
+  const vn = (s: string) => new Date(`${s}+07:00`);
+  it('skips Sundays and holidays, keeps the time of day', () => {
+    // Fri 16/10 10:00 + 2 working days → Sat 17 (1), Sun skipped, Mon 19 (2)
+    expect(addBusinessDays(vn('2026-10-16T10:00:00'), 2, cal)).toEqual(vn('2026-10-19T10:00:00'));
+    // Mon 19 + 2: Tue 20 is a holiday → Wed 21, Thu 22
+    expect(addBusinessDays(vn('2026-10-19T09:00:00'), 2, cal)).toEqual(vn('2026-10-22T09:00:00'));
+  });
+  it('snaps an off-hours time to the next opening', () => {
+    expect(addBusinessDays(vn('2026-10-15T20:00:00'), 1, cal)).toEqual(vn('2026-10-17T08:00:00'));
   });
 });

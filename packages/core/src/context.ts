@@ -11,6 +11,15 @@ export interface Effects {
   deliverNotifications(notificationIds: string[]): Promise<void>;
   /** Hand queued customer messages to the `channel-outbound` queue (SPEC 5.2, §9). */
   sendOutbound(messageIds: string[]): Promise<void>;
+  /** Render (and optionally send) a quote PDF in the worker (`quote-pdf`, SPEC §9). */
+  renderQuotePdf(job: QuotePdfJob): Promise<void>;
+}
+
+export interface QuotePdfJob {
+  quoteId: string;
+  /** After rendering, send it in this Messenger conversation as this user. */
+  sendToConversationId?: string | null;
+  userId?: string | null;
 }
 
 export interface ServiceContext {
@@ -40,6 +49,9 @@ export class Outbox {
   sendOutbound(ids: string[]) {
     if (ids.length) this.items.push(() => this.effects.sendOutbound(ids));
   }
+  renderQuotePdf(job: QuotePdfJob) {
+    this.items.push(() => this.effects.renderQuotePdf(job));
+  }
   async flush() {
     const items = this.items;
     this.items = [];
@@ -55,6 +67,10 @@ export class RecordingEffects implements Effects {
   readonly slaChecks: { assignmentId: string; at: Date }[] = [];
   readonly deliveries: string[] = [];
   readonly outbound: string[] = [];
+  readonly pdfJobs: QuotePdfJob[] = [];
+  async renderQuotePdf(job: QuotePdfJob) {
+    this.pdfJobs.push(job);
+  }
   async sendOutbound(ids: string[]) {
     this.outbound.push(...ids);
   }

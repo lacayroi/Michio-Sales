@@ -3,10 +3,20 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.tsx"
+  },
   "scripts": {
     "lint": "eslint src",
     "typecheck": "tsc",
     "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@react-pdf/renderer": "^4.9.0",
+    "react": "~19.1.10",
+    "@michio/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0"
   }
 }

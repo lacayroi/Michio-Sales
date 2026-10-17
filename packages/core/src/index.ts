@@ -30,3 +30,8 @@ export * from './messenger';
 export * from './inbox';
 export * from './storage';
 export * from './products';
+export * from './pricing';
+export * from './orders';
+export * from './quotes';
+export * from './deals';
+export * from './catalog';

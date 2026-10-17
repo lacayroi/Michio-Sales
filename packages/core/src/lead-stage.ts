@@ -16,7 +16,7 @@ function matchLostReason(reasons: { id: string; name: string }[], text: string |
   return hit ?? reasons.find((r) => fold(r.name) === 'khac') ?? reasons[0];
 }
 
-export async function changeLeadStage(ctx: ServiceContext, leadId: string, stageCode: LeadStageCode | 'DA_LIEN_HE', note?: string | null) {
+export async function changeLeadStage(ctx: ServiceContext, leadId: string, stageCode: LeadStageCode | 'DA_LIEN_HE' | 'MOI', note?: string | null, opts: { lostReasonId?: string | null } = {}) {
   const actor = ctx.actor;
   if (!actor) throw new DomainError('INVALID_STATE', 'Thiếu người thực hiện');
   const outbox = new Outbox(ctx.effects);
@@ -38,7 +38,7 @@ export async function changeLeadStage(ctx: ServiceContext, leadId: string, stage
     let lostReasonId: string | null = null;
     if (stage.isLost) {
       const reasons = await tx.lostReason.findMany({ where: { orgId: ctx.orgId, isActive: true }, select: { id: true, name: true } });
-      lostReasonId = matchLostReason(reasons, note ?? null)?.id ?? null;
+      lostReasonId = (opts.lostReasonId && reasons.find((r) => r.id === opts.lostReasonId)?.id) || (matchLostReason(reasons, note ?? null)?.id ?? null);
     }
     const data = { stageId: stage.id, closedAt: closing ? now : null, lostReasonId, ownerId: lead.ownerId ?? actor.id };
     deal = deal
