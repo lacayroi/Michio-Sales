@@ -16,7 +16,8 @@
     "db:deploy": "pnpm --filter @michio/db run deploy",
     "db:seed": "pnpm --filter @michio/db seed",
     "db:reset": "pnpm --filter @michio/db reset",
-    "infra:up": "docker compose up -d postgres redis s3"
+    "infra:up": "docker compose up -d postgres redis s3",
+    "replay:webhook": "pnpm --filter @michio/worker replay:webhook"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

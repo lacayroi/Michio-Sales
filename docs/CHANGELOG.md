@@ -1,5 +1,26 @@
 # Changelog
 
+## M3 — Facebook (17/10/2026)
+
+**Kết nối Page** (SPEC 5.2, thông số Meta đối chiếu ngày 17/10/2026 — D-028)
+- `packages/channels/facebook`: Graph API v26.0 (đổi bằng `FB_GRAPH_VERSION`), xác minh `X-Hub-Signature-256`, đọc webhook (tin nhắn, ảnh, tệp, sticker, postback, echo, đã nhận/đã xem, Lead Ads), gửi tin (RESPONSE / HUMAN_AGENT), hồ sơ khách, Lead Ads `field_data`, OAuth lấy page token; `MessageGateway` cho Messenger; client mô phỏng + bộ dựng webhook mẫu (`packages/channels/test/mocks/facebook.ts`).
+- Cài đặt → **Facebook Page** (Owner): đăng nhập Facebook → chọn Page → đăng ký webhook cho Page; trạng thái, URL webhook, sự kiện lỗi, ngắt kết nối; bật/tắt thẻ "Nhân viên hỗ trợ". Token lưu mã hóa AES-256-GCM. Job `facebook-token-check` 07:00 hằng ngày, token hỏng → báo Owner.
+- Webhook `GET/POST /api/v1/webhooks/facebook` → `WebhookEvent` (gửi trùng chỉ xử lý 1 lần) → queue `channel-inbound`. `pnpm replay:webhook --id …` phát lại sự kiện.
+
+**Tin nhắn → lead tự chia**: khách mới nhắn Page → tạo khách (tên, ảnh từ Facebook) + lead nguồn Messenger → chia xoay vòng như mọi nguồn. Khách đang có lead mở → tin vào hội thoại, báo sales phụ trách tối đa 1 lần/5 phút. Lead Ads → lead nguồn `FACEBOOK_LEAD_ADS` với SĐT, tỉnh, mô hình, mức nhập lấy từ form.
+
+**S6 Hộp thư** (6.4): 3 cột (danh sách lọc Tất cả / Của tôi / Chưa đọc / Chưa trả lời, tìm theo tên/SĐT — khung chat — thẻ khách); mobile: danh sách → chat → nút thông tin khách. Gửi chữ, ảnh, tệp (lưu S3, link ký có hạn), sản phẩm từ danh mục (tìm không dấu); **mẫu trả lời nhanh** gõ `/` có biến `{ten_khach}`, `{ten_sales}`, `{sdt_sales}`; **ghi chú nội bộ** + @nhắc đồng nghiệp; trạng thái gửi (đang gửi / đã gửi / đã nhận / lỗi); **khung 24 giờ**: hết khung khóa ô soạn tin, gợi ý Gọi / Nhắn Zalo / Tạo việc gọi lại. Đổi giai đoạn nhanh từ thẻ khách. Badge chưa đọc trên menu, cập nhật realtime (SSE `message.new`). Chế độ demo có nút "Mô phỏng khách".
+- Tin gửi đi qua queue `channel-outbound` (5 lần thử, backoff); tin đầu tiên gửi được tính là **liên hệ đầu tiên** (FRT). Lỗi cuối cùng → báo người gửi.
+- Cài đặt → **Mẫu trả lời nhanh** (Owner/Manager). Dòng thời gian khách hiển thị tóm tắt tin nhắn, đổi giai đoạn, việc đã xong.
+
+**Dữ liệu**: migration `m3_search` (`unaccent`, `pg_trgm`, chỉ mục tìm sản phẩm không dấu). Lưu tệp S3 (`packages/core/src/storage.ts`), `GET /api/v1/public/files` cho link ký có hạn.
+
+**Sửa**: `intakeLead` truyền nhầm `displayName` vào khóa tìm danh tính kênh (lỗi tiềm ẩn từ M1, lộ ra khi có nguồn Messenger). Test snippet WordPress chạy được trên Windows có Docker trong WSL (D-035). Test menu e2e chấp nhận số đếm chưa đọc.
+
+**Kiểm thử**: +17 unit kênh Facebook (chữ ký, parser, khung nhắn, Lead Ads, client Graph, gateway), +4 unit (mã hóa, link ký), +10 integration (DoD M3: tin Page → lead tự chia → sales trả lời → liên hệ đầu tiên; webhook trùng → 1 tin 1 lead; tin tiếp theo vào lead đang mở; echo; khung 24 giờ / HUMAN_AGENT; ghi chú @nhắc; phạm vi xem; Lead Ads; lỗi gửi, token hỏng, kiểm tra token), +2 e2e (khách nhắn qua mô phỏng → lead được chia → sales nhận, trả lời bằng mẫu `/chao`, ghi chú; trang cài đặt Facebook).
+
+**Việc của Michio song song**: nộp **Meta App Review** + xác minh doanh nghiệp cho các quyền ở D-028; đặt `FB_APP_ID`, `FB_APP_SECRET`, `FB_VERIFY_TOKEN` và domain HTTPS cho webhook.
+
 ## Bổ sung M1 (16/10/2026)
 - **Giờ làm việc** sửa được trong Cài đặt (SPEC A1 cần xác nhận) — hạn nhận/liên hệ tính theo giờ mới ngay.
 - **Lịch nghỉ nhân viên** (§8 `/users/:id/leaves`): Owner thêm/xóa ở màn Người dùng; người đang nghỉ không được chia lead, lead đang chờ họ được chuyển ngay.

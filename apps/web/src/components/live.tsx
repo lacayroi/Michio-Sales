@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/client';
 import { useToast } from './ui/toast';
 
-const REFRESH_EVENTS = ['lead.assigned', 'lead.updated', 'assignment.expiring', 'notification.new'];
+const REFRESH_EVENTS = ['lead.assigned', 'lead.updated', 'assignment.expiring', 'notification.new', 'message.new', 'order.updated', 'task.due'];
 
 interface NotificationItem { id: string; title: string; body: string; link: string | null; readAt: string | null; createdAt: string }
 

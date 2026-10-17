@@ -70,7 +70,9 @@ for (const r of ROLES) {
     await expect(page.getByTestId('current-role')).toHaveText(r.role);
 
     const nav = page.getByRole('navigation', { name: 'Menu chính' });
-    await expect(nav.getByRole('link')).toHaveText(r.menu);
+    // Labels may carry an unread badge (e.g. "Hộp thư3").
+    const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    await expect(nav.getByRole('link')).toHaveText(r.menu.map((l) => new RegExp(`^${escape(l)}(\\d+|99\\+)?$`)));
 
     await expect(page.getByTestId('kpi').first()).toBeVisible();
 

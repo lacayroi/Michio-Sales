@@ -15,7 +15,7 @@ import { UserMenu, type UserMenuProps } from './user-menu';
 
 const GROUP_LABELS: Record<NavItem['group'], string | null> = { main: null, admin: 'Quản trị', account: null };
 
-function NavList({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => void }) {
+function NavList({ items, badges, onNavigate }: { items: NavItem[]; badges?: Record<string, number>; onNavigate?: () => void }) {
   const pathname = usePathname();
   const groups = (['main', 'admin', 'account'] as const)
     .map((g) => ({ g, items: items.filter((i) => i.group === g) }))
@@ -42,6 +42,11 @@ function NavList({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => v
               >
                 <NavIcon name={item.icon} className="size-4 shrink-0" />
                 {item.label}
+                {!!badges?.[item.href] && (
+                  <span className="ml-auto min-w-5 rounded-full bg-accent px-1.5 text-center text-[11px] font-bold leading-5 text-accent-foreground" data-testid={`badge-${item.href.slice(1)}`}>
+                    {badges[item.href]! > 99 ? '99+' : badges[item.href]}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -56,8 +61,9 @@ export function AppShell({
   user,
   canCreateLead,
   isSales,
+  badges,
   children,
-}: { items: NavItem[]; user: UserMenuProps; canCreateLead: boolean; isSales: boolean; children: ReactNode }) {
+}: { items: NavItem[]; user: UserMenuProps; canCreateLead: boolean; isSales: boolean; badges?: Record<string, number>; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   useEffect(() => setOpen(false), [pathname]);
@@ -89,14 +95,14 @@ export function AppShell({
 
       <div className="flex">
         <aside className="sticky top-[60px] hidden h-[calc(100dvh-60px)] w-60 shrink-0 overflow-y-auto border-r border-border bg-surface p-3 lg:block">
-          <NavList items={items} />
+          <NavList items={items} badges={badges} />
         </aside>
 
         {open && (
           <div className="fixed inset-0 z-40 lg:hidden">
             <button type="button" aria-label="Đóng menu" className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
             <aside className="absolute inset-y-0 left-0 w-72 overflow-y-auto bg-surface p-3 shadow-xl">
-              <NavList items={items} onNavigate={() => setOpen(false)} />
+              <NavList items={items} badges={badges} onNavigate={() => setOpen(false)} />
             </aside>
           </div>
         )}

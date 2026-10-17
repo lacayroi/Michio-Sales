@@ -8,7 +8,8 @@
     "start": "tsx src/index.ts",
     "lint": "eslint src",
     "typecheck": "tsc",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "replay:webhook": "dotenv -e ../../.env -- tsx src/replay-webhook.ts"
   },
   "dependencies": {
     "@michio/channels": "workspace:*",
