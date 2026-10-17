@@ -3,9 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts",
+    "./mocks/facebook": "./test/mocks/facebook.ts"
+  },
   "scripts": {
-    "lint": "eslint src",
+    "lint": "eslint src test",
     "typecheck": "tsc",
     "test": "vitest run --passWithNoTests"
   }

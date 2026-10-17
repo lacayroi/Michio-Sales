@@ -146,3 +146,48 @@ PR #1 thiếu hai thứ thuộc phạm vi M1 mà bản kia có, nay được b�
 - **Giờ làm việc** (`/cai-dat/gio-lam-viec`, `GET/PUT /working-calendar`): A1 là `[CẦN XÁC NHẬN]` nên theo 0.1.4 phải đổi được không cần sửa code. Mỗi ngày tối đa 4 khung, tăng dần, không chồng nhau. Có hiệu lực ngay cho mọi hạn SLA mới.
 - **Lịch nghỉ** (`CRUD /users/:id/leaves` theo §8, nút "Lịch nghỉ" ở màn Người dùng — Owner): engine đã bỏ qua người đang nghỉ nhưng trước đây không có chỗ nhập. Nghỉ theo ngày trọn vẹn giờ VN; không cho trùng khoảng; thêm lịch nghỉ đang diễn ra thì các lead **đang chờ** người đó nhận được chuyển ngay cho người khác (như khi khóa tài khoản, D-017). Sales xem được lịch nghỉ của mình ở Hồ sơ.
 - Chưa port: "thông tin công ty" (dùng in PDF) — làm cùng báo giá ở M4.
+
+## D-028 · Thông số Meta / Messenger đã đối chiếu (M3)
+Đối chiếu tài liệu Meta ngày 17/10/2026 (SPEC 0.1.5), gom trong `packages/channels/src/facebook` (`FACEBOOK`):
+- Graph API **v26.0** (phát hành 29/07/2026) làm mặc định; `FB_GRAPH_VERSION` ghi đè. v20.0 hết hạn 24/09/2026.
+- Webhook: `GET` trả `hub.challenge` khi `hub.mode=subscribe` và `hub.verify_token` khớp; `POST` có `X-Hub-Signature-256: sha256=<hex HMAC-SHA256(body thô, App Secret)>` — so sánh hằng thời gian trên **body thô** (đọc `req.text()` trước khi parse). Meta cần 200 trong ≤ 5 giây, gửi lại nhiều lần khi lỗi, quá 1 giờ thì tự hủy đăng ký → route chỉ lưu `WebhookEvent` rồi trả 200; xử lý ở queue `channel-inbound`. Tin có thể đến sai thứ tự → thời điểm hội thoại chỉ tiến lên (`GREATEST`).
+- Khung nhắn: **24 giờ** sau tin cuối của khách; thẻ `HUMAN_AGENT` cho trả lời thủ công **7 ngày**, chỉ dùng cho trường hợp được duyệt → `facebook.useHumanAgentTag` mặc định `false`, gửi bằng `messaging_type=MESSAGE_TAG, tag=HUMAN_AGENT` khi bật và ngoài 24 giờ. Hai số này giữ trong `Setting` như SPEC 7.1 (giá trị tạm của D-007 nay đã xác nhận).
+- Lead Ads: thay đổi `field = leadgen` có `leadgen_id`, `page_id`, `form_id`, `ad_id`, `created_time`; dữ liệu lấy bằng `GET /{leadgen_id}?fields=field_data,…` (quyền `leads_retrieval`, `pages_manage_ads`, `pages_read_engagement`, `pages_show_list`, `pages_manage_metadata`). Trường chuẩn (`full_name`, `phone_number`, `email`, `city`) và câu hỏi tùy chỉnh tiếng Việt được ánh xạ theo tên đã bỏ dấu.
+- Kết nối Page: đăng nhập Facebook của Owner → code → user token dài hạn (`fb_exchange_token`) → `me/accounts` (page token sinh từ user token dài hạn không hết hạn) → Owner chọn Page → `POST /{page-id}/subscribed_apps` (messages, messaging_postbacks, message_echoes, message_deliveries, message_reads, leadgen). Page token lưu mã hóa AES-256-GCM (`ENCRYPTION_KEY`) trong `ChannelAccount.credentials`; danh sách Page chờ chọn chỉ nằm trong Redis 10 phút, cũng mã hóa, không bao giờ gửi token xuống trình duyệt.
+- Lỗi Graph: mã 190/102/10/2xx = token hỏng/thiếu quyền → `ChannelAccount.status = ERROR` + cảnh báo Owner (loại `system`, gửi Zalo kể cả ngoài giờ); 1/2/4/17/32/613, 5xx, lỗi mạng = thử lại. Job `facebook-token-check` 07:00 hằng ngày kiểm tra lại token và tự về `ACTIVE` khi đã sửa.
+
+## D-029 · Tin nhắn vào: lead, hội thoại, dòng thời gian (M3)
+- PSID đã biết và khách **đang có lead mở** → chỉ thêm `Message` vào hội thoại, không gọi lại `intakeLead` (tránh ghi "Liên hệ lại" cho từng tin). Ngược lại → `intakeLead` (nguồn `FACEBOOK_MESSENGER`, tên + ảnh lấy từ Graph API) nên chống trùng, khách cũ về đúng sales phụ trách, xoay vòng… giống hệt mọi nguồn khác.
+- Webhook gửi trùng: `WebhookEvent.eventKey = facebook:message:<mid>` (unique) + `Message @@unique([conversationId, externalMessageId])` → 1 Message, 1 Lead (AC 6.2).
+- Báo sales khi khách nhắn lại: loại `lead.recontact`, tối đa **1 thông báo / hội thoại / 5 phút cả trên web lẫn Zalo** (SPEC 5.5 chỉ nói Zalo; chuông web cũng bị spam nếu không giới hạn). Lead vừa tạo không báo thêm vì đã có "được giao lead".
+- Dòng thời gian (6.9 "tin nhắn (tóm tắt)"): một Activity `MESSAGE_IN` / `MESSAGE_OUT` cho mỗi chuỗi tin trong 30 phút, cập nhật số tin và câu cuối.
+- Echo: tin do chính app gửi (khớp `FB_APP_ID`) bỏ qua; tin nhân viên gõ trong Page inbox / Business Suite được lưu `OUT` để hội thoại đủ, và tính là liên hệ đầu tiên.
+- Ghi chú nội bộ = `Message.direction = NOTE` (không bao giờ vào queue gửi). @nhắc: id chọn từ danh sách, hoặc "@Họ Tên" gõ tay (so khớp không dấu).
+
+## D-030 · Tin nhắn ra qua queue, liên hệ đầu tiên khi gửi thành công (M3)
+- Web chỉ kiểm tra quyền + khung nhắn rồi tạo `Message(QUEUED, idempotencyKey)`; bấm gửi 2 lần cùng key → 1 tin. Sau commit đưa vào `channel-outbound` (5 lần, backoff mũ). Worker gửi qua `MessageGateway` (`createMessengerGateway`, kiểm tra khung lần nữa lúc gửi).
+- `Lead.firstContactAt` đặt khi tin **thực sự gửi được** (SPEC 6.3.4 "tin nhắn ra đầu tiên"), kèm AuditLog `lead.first_contact`.
+- Lỗi vĩnh viễn (hết khung, token hỏng, 4xx) → `FAILED` ngay; lỗi tạm → thử lại, lần cuối vẫn lỗi → `FAILED`. Người gửi nhận thông báo `message.failed`.
+- Gửi sản phẩm: ảnh (nếu có) + tên, mã, quy cách, link. Gửi tệp: lưu S3 riêng tư, gửi link ký có hạn 7 ngày (D-031). Messenger giới hạn tệp 25 MB.
+
+## D-031 · Lưu tệp riêng tư + link ký có hạn (M3, dùng lại ở M4)
+Bucket S3 không public. Tệp được phục vụ qua `GET /api/v1/public/files?k=&e=&s=` với chữ ký HMAC-SHA256 (khóa dẫn xuất từ `ENCRYPTION_KEY`) và thời hạn trong link — đáp ứng 6.6 "link chia sẻ có hạn" cho PDF báo giá và cho Messenger tải tệp đính kèm, không cần public bucket hay presigned URL lộ endpoint S3 nội bộ. Bucket được tự tạo ở lần ghi đầu (dev SeaweedFS).
+
+## D-032 · Tìm sản phẩm không dấu bằng chỉ mục biểu thức (M3/M4)
+Migration `m3_search` bật `unaccent` + `pg_trgm`, tạo hàm `f_unaccent()` IMMUTABLE (bọc `unaccent` có từ điển cố định, thay cả đ/Đ) và chỉ mục GIN trigram trên `f_unaccent(name)`, `sku` (SPEC 11.3). Prisma không mô tả được chỉ mục biểu thức nên chúng chỉ có trong SQL migration; `prisma migrate dev` có thể đề nghị xóa — không chấp nhận đề nghị đó.
+
+## D-033 · Hộp thư dùng server render + SSE `router.refresh()`, chưa dùng TanStack Query (M3)
+D-019 định dùng TanStack Query cho hộp thư. Thực tế danh sách + luồng tin render ở server (quyền, đánh dấu đã đọc) và SSE `message.new` gọi `router.refresh()` đủ nhanh cho quy mô 3 sales (11.3); tin cũ hơn tải thêm qua `GET /conversations/:id/messages?before=`. Không thêm thư viện. Nếu cần cập nhật lạc quan / offline (PWA, M6) sẽ xem lại.
+
+## D-034 · Endpoint bổ sung ngoài §8 (M3)
+- `POST /api/v1/leads/:id/stage {stage, note}`: đổi giai đoạn nhanh từ thẻ khách (6.4) — cùng service với lệnh bot `TRANGTHAI`. M4 thêm `/deals/:id/stage` theo §8 cho Kanban.
+- `POST /api/v1/tasks`: tạo việc "gọi lại" khi hết khung nhắn (5.2). CRUD đầy đủ `/tasks` ở M5.
+- `GET /api/v1/products` (tìm không dấu) làm sớm cho nút "Gửi sản phẩm"; màn Sản phẩm ở M4.
+- `POST /api/v1/dev/facebook` (chỉ khi `MOCK_INTEGRATIONS=true`): mô phỏng khách nhắn Page, đi đúng đường webhook → `WebhookEvent` → xử lý.
+- `pnpm replay:webhook --id <WebhookEvent>` (SPEC 11.4): đặt lại `RECEIVED` và đưa vào queue tương ứng (facebook / zalo-bot).
+
+## D-035 · Chạy test trên máy Windows có Docker trong WSL (M3)
+Máy dev hiện tại không có `docker.exe` trên PATH của Windows (Docker chạy trong WSL), nên testcontainers không khởi động được và test snippet WordPress không gọi được `docker`.
+- Integration test: đặt `TEST_DATABASE_URL` tới một database trống (đã hỗ trợ từ M0), vd tạo `michio_test` trong Postgres của `docker compose`.
+- Test snippet WordPress: trên Windows nếu `docker` không chạy được thì gọi `wsl -e docker …` (`-e` để WSL không đưa lệnh qua shell, giữ nguyên `$` trong mã PHP).
+- Chromium mới trả về Promise từ `scrollIntoView()`: effect của React phải viết dạng khối, không `() => el.scrollIntoView()` (lỗi "destroy is not a function" chỉ thấy ở bản build).

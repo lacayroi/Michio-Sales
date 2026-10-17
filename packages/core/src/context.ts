@@ -9,6 +9,8 @@ export interface Effects {
   publish(event: AppEvent): Promise<void>;
   /** Push new Notification rows to their recipients on Zalo Bot (SPEC 5.5; queue zalo-bot-notify). */
   deliverNotifications(notificationIds: string[]): Promise<void>;
+  /** Hand queued customer messages to the `channel-outbound` queue (SPEC 5.2, §9). */
+  sendOutbound(messageIds: string[]): Promise<void>;
 }
 
 export interface ServiceContext {
@@ -35,6 +37,9 @@ export class Outbox {
   deliverNotifications(ids: string[]) {
     if (ids.length) this.items.push(() => this.effects.deliverNotifications(ids));
   }
+  sendOutbound(ids: string[]) {
+    if (ids.length) this.items.push(() => this.effects.sendOutbound(ids));
+  }
   async flush() {
     const items = this.items;
     this.items = [];
@@ -49,6 +54,10 @@ export class RecordingEffects implements Effects {
   readonly events: AppEvent[] = [];
   readonly slaChecks: { assignmentId: string; at: Date }[] = [];
   readonly deliveries: string[] = [];
+  readonly outbound: string[] = [];
+  async sendOutbound(ids: string[]) {
+    this.outbound.push(...ids);
+  }
   async deliverNotifications(ids: string[]) {
     this.deliveries.push(...ids);
   }

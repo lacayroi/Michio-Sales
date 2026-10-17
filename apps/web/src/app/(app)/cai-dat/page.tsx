@@ -1,5 +1,5 @@
 import { can } from '@michio/auth/permissions';
-import { Bot, CalendarDays, Clock, KeyRound, SplitSquareHorizontal } from 'lucide-react';
+import { Bot, CalendarDays, Clock, Facebook, KeyRound, MessageSquareText, SplitSquareHorizontal } from 'lucide-react';
 import Link from 'next/link';
 import { requireUser } from '@/lib/session';
 
@@ -12,6 +12,8 @@ export default async function SettingsPage() {
     can(user.role, 'settings.manage') && { href: '/cai-dat/ngay-le', icon: CalendarDays, title: 'Ngày lễ', desc: 'Lịch nghỉ dùng để tính thời hạn nhận và liên hệ lead' },
     can(user.role, 'assignmentRule.manage') && { href: '/chia-lead', icon: SplitSquareHorizontal, title: 'Chia lead & thời hạn', desc: 'Luật xoay vòng, thời hạn nhận, lead ngoài giờ' },
     can(user.role, 'integration.manage') && { href: '/cai-dat/api-key', icon: KeyRound, title: 'API key website', desc: 'Kết nối form "Nhận bảng giá sỉ" / "Đăng ký đại lý" trên WordPress' },
+    can(user.role, 'settings.manage') && { href: '/cai-dat/mau-tra-loi', icon: MessageSquareText, title: 'Mẫu trả lời nhanh', desc: 'Câu trả lời gõ / trong hộp thư, có biến tên khách, tên sales' },
+    can(user.role, 'integration.manage') && { href: '/cai-dat/facebook', icon: Facebook, title: 'Facebook Page', desc: 'Messenger & Lead Ads vào hộp thư, khung thời gian nhắn tin' },
     can(user.role, 'integration.manage') && { href: '/cai-dat/zalo-bot', icon: Bot, title: 'Zalo Bot', desc: 'Bot báo lead, nhắc việc, tổng kết sáng cho sales' },
   ].filter(Boolean) as { href: string; icon: typeof CalendarDays; title: string; desc: string }[];
   return (
@@ -30,7 +32,6 @@ export default async function SettingsPage() {
           </li>
         ))}
       </ul>
-      <p className="mt-6 text-sm text-muted-foreground">Facebook (M3) và WooCommerce (M4) sẽ xuất hiện ở đây.</p>
     </section>
   );
 }

@@ -88,7 +88,7 @@ function mergeCustomerData(existing: Customer, input: z.output<typeof LeadIntake
 async function findExistingCustomer(tx: Tx, orgId: string, phone: string | null, email: string | undefined, identity?: { channelAccountId: string; externalUserId: string }) {
   if (identity) {
     const ident = await tx.customerIdentity.findUnique({
-      where: { channelAccountId_externalUserId: identity },
+      where: { channelAccountId_externalUserId: { channelAccountId: identity.channelAccountId, externalUserId: identity.externalUserId } },
       include: { customer: true },
     });
     if (ident && !ident.customer.deletedAt) return ident.customer;

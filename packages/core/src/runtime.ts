@@ -1,5 +1,12 @@
 // Production Effects: BullMQ for delayed SLA checks and Zalo Bot delivery, Redis pub/sub for SSE (SPEC §9, §8).
-import { createZaloBotHttpClient, createZaloBotMockClient, type ZaloBotClient } from '@michio/channels';
+import {
+  createFacebookHttpClient,
+  createFacebookMockClient,
+  createZaloBotHttpClient,
+  createZaloBotMockClient,
+  type FacebookClient,
+  type ZaloBotClient,
+} from '@michio/channels';
 import { Queue } from 'bullmq';
 import type { Redis } from 'ioredis';
 import type { Effects } from './context';
@@ -11,7 +18,21 @@ export const QUEUES = {
   import: 'import',
   zaloBotInbound: 'zalo-bot-inbound',
   zaloBotNotify: 'zalo-bot-notify',
+  channelInbound: 'channel-inbound',
+  channelOutbound: 'channel-outbound',
 } as const;
+
+export interface ChannelInboundJob {
+  webhookEventId: string;
+}
+
+export interface ChannelOutboundJob {
+  messageId: string;
+}
+
+/** SPEC 5.2: "retry backoff tối đa 5 lần". */
+export const OUTBOUND_JOB = { attempts: 5, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: 5000, removeOnFail: 5000 } as const;
+export const INBOUND_JOB = { attempts: 5, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: 5000, removeOnFail: 5000 } as const;
 
 export interface ImportJobData {
   orgId: string;
@@ -31,12 +52,17 @@ export interface ZaloBotNotifyJob {
 
 const NOTIFY_JOB = { removeOnComplete: 5000, removeOnFail: 5000, attempts: 5, backoff: { type: 'exponential', delay: 10_000 } };
 
-export function createRedisEffects(connection: Redis): Effects & { slaQueue: Queue; notifyQueue: Queue; close(): Promise<void> } {
+export function createRedisEffects(connection: Redis): Effects & { slaQueue: Queue; notifyQueue: Queue; outboundQueue: Queue; close(): Promise<void> } {
   const slaQueue = new Queue(QUEUES.slaCheck, { connection });
   const notifyQueue = new Queue<ZaloBotNotifyJob>(QUEUES.zaloBotNotify, { connection });
+  const outboundQueue = new Queue<ChannelOutboundJob>(QUEUES.channelOutbound, { connection });
   return {
     slaQueue,
     notifyQueue,
+    outboundQueue,
+    async sendOutbound(ids) {
+      await outboundQueue.addBulk(ids.map((messageId) => ({ name: 'send', data: { messageId }, opts: { ...OUTBOUND_JOB, jobId: `out-${messageId}` } })));
+    },
     async scheduleSlaCheck(assignmentId, at) {
       await slaQueue.add(
         'check',
@@ -52,7 +78,7 @@ export function createRedisEffects(connection: Redis): Effects & { slaQueue: Que
       await notifyQueue.addBulk(ids.map((notificationId) => ({ name: 'deliver', data: { notificationId }, opts: { ...NOTIFY_JOB, jobId: `n-${notificationId}` } })));
     },
     async close() {
-      await Promise.all([slaQueue.close(), notifyQueue.close()]);
+      await Promise.all([slaQueue.close(), notifyQueue.close(), outboundQueue.close()]);
     },
   };
 }
@@ -92,4 +118,30 @@ export function createZaloBotClient(connection: Redis): ZaloBotClient | null {
   if (isMockIntegrations()) return createZaloBotMockClient({ push: (m) => pushMockBotMessage(connection, { ...m, from: 'bot' }) });
   const token = process.env.ZALO_BOT_TOKEN;
   return token ? createZaloBotHttpClient(token) : null; // live mode without a token: bot disabled
+}
+
+/** Redis list the mock Messenger client writes to (demo / e2e, MOCK_INTEGRATIONS=true). */
+export const MOCK_FACEBOOK_OUTBOX = 'mock:facebook:outbox';
+export const mockFacebookProfileKey = (psid: string) => `mock:facebook:profile:${psid}`;
+
+export async function readMockFacebookMessages(connection: Redis, psid: string, limit = 50) {
+  const raw = await connection.lrange(MOCK_FACEBOOK_OUTBOX, 0, MOCK_OUTBOX_MAX - 1);
+  return raw.map((r) => JSON.parse(r) as { psid: string; kind: string; text?: string; attachmentUrl?: string; at: string }).filter((m) => m.psid === psid).slice(0, limit).reverse();
+}
+
+/**
+ * Facebook Graph client: the mock (no network) when MOCK_INTEGRATIONS=true, the real Graph API when
+ * FB_APP_ID / FB_APP_SECRET are set, otherwise null (Facebook disabled).
+ */
+export function createFacebookClient(connection: Redis): FacebookClient | null {
+  if (isMockIntegrations()) {
+    return createFacebookMockClient({
+      push: async (m) => {
+        await connection.multi().lpush(MOCK_FACEBOOK_OUTBOX, JSON.stringify(m)).ltrim(MOCK_FACEBOOK_OUTBOX, 0, MOCK_OUTBOX_MAX - 1).exec();
+      },
+    }, {}, (psid) => connection.get(mockFacebookProfileKey(psid)));
+  }
+  const appId = process.env.FB_APP_ID;
+  const appSecret = process.env.FB_APP_SECRET;
+  return appId && appSecret ? createFacebookHttpClient({ appId, appSecret }) : null;
 }

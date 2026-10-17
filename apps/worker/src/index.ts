@@ -1,6 +1,14 @@
 import { ZaloBotApiError } from '@michio/channels';
 import {
   type BotRuntime,
+  type ChannelInboundJob,
+  type ChannelOutboundJob,
+  checkFacebookTokens,
+  createFacebookClient,
+  deliverOutboundMessage,
+  type MessengerRuntime,
+  OUTBOUND_JOB,
+  processFacebookEvent,
   createDailyDigests,
   createRedisEffects,
   createZaloBotClient,
@@ -34,6 +42,8 @@ const effects = createRedisEffects(connection);
 const bot = createZaloBotClient(connection);
 const appUrl = process.env.APP_URL ?? null;
 const botRuntime: BotRuntime = { db: prisma, effects, now: () => new Date() };
+const facebook = createFacebookClient(connection);
+const messengerRuntime: MessengerRuntime | null = facebook ? { db: prisma, effects, now: () => new Date(), client: facebook, appId: process.env.FB_APP_ID ?? null } : null;
 
 const systemCtx = (orgId: string): ServiceContext => ({ db: prisma, effects, now: () => new Date(), actor: null, orgId, via: 'SYSTEM' });
 const orgIds = async () => (await prisma.organization.findMany({ select: { id: true } })).map((o) => o.id);
@@ -83,6 +93,13 @@ const systemWorker = new Worker(
         for (const orgId of await orgIds()) {
           const r = await releaseHeldLeads(systemCtx(orgId));
           if (r.length) log.info({ jobId: job.id, orgId, released: r.length }, 'out-of-hours-release');
+        }
+        return;
+      case 'facebook-token-check': // daily: expired/revoked Page tokens → ERROR + alert Owner (SPEC §9)
+        if (!messengerRuntime) return;
+        for (const orgId of await orgIds()) {
+          const r = await checkFacebookTokens(messengerRuntime, orgId);
+          if (r.some((x) => !x.ok)) log.warn({ jobId: job.id, orgId, pages: r }, 'facebook-token-check');
         }
         return;
       case 'task-reminder': // every minute: task reminders, "còn 3 phút" warnings, morning digest (SPEC §9)
@@ -159,6 +176,29 @@ const botNotifyWorker = new Worker<ZaloBotNotifyJob>(
   { connection, concurrency: 3, limiter: { max: 10, duration: 1000 } },
 );
 
+// ---- Facebook Messenger / Lead Ads (SPEC 5.2): every send goes through the MessageGateway ----
+const channelInboundWorker = new Worker<ChannelInboundJob>(
+  QUEUES.channelInbound,
+  async (job) => {
+    if (!messengerRuntime) throw new UnrecoverableError('Facebook is not configured (FB_APP_ID / FB_APP_SECRET / MOCK_INTEGRATIONS)');
+    const r = await processFacebookEvent(messengerRuntime, job.data.webhookEventId);
+    log.info({ jobId: job.id, eventId: job.data.webhookEventId, ...r }, 'channel-inbound');
+  },
+  { connection, concurrency: 5 },
+);
+
+const channelOutboundWorker = new Worker<ChannelOutboundJob>(
+  QUEUES.channelOutbound,
+  async (job) => {
+    if (!messengerRuntime) throw new UnrecoverableError('Facebook is not configured');
+    const finalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? OUTBOUND_JOB.attempts);
+    const r = await deliverOutboundMessage(messengerRuntime, job.data.messageId, { finalAttempt });
+    log.info({ jobId: job.id, messageId: job.data.messageId, status: r.status }, 'channel-outbound');
+    return r;
+  },
+  { connection, concurrency: 3 },
+);
+
 // getUpdates long polling for machines without a public HTTPS webhook (ZALO_BOT_POLLING=true, live bot).
 let polling = process.env.ZALO_BOT_POLLING === 'true' && bot?.mode === 'live';
 async function pollLoop() {
@@ -176,7 +216,7 @@ async function pollLoop() {
   }
 }
 
-const workers = [slaWorker, systemWorker, importWorker, botInboundWorker, botNotifyWorker];
+const workers = [slaWorker, systemWorker, importWorker, botInboundWorker, botNotifyWorker, channelInboundWorker, channelOutboundWorker];
 for (const w of workers) {
   w.on('failed', (job, err) => log.error({ queue: w.name, jobId: job?.id, err }, 'job failed'));
 }
@@ -184,9 +224,10 @@ for (const w of workers) {
 await systemQueue.upsertJobScheduler('heartbeat', { every: 60_000 }, { name: 'heartbeat' });
 await systemQueue.upsertJobScheduler('sla-sweeper', { every: 60_000 }, { name: 'sla-sweeper' });
 await systemQueue.upsertJobScheduler('out-of-hours-release', { pattern: '0 8 * * 1-6', tz: 'Asia/Ho_Chi_Minh' }, { name: 'out-of-hours-release' });
+await systemQueue.upsertJobScheduler('facebook-token-check', { pattern: '0 7 * * *', tz: 'Asia/Ho_Chi_Minh' }, { name: 'facebook-token-check' });
 await systemQueue.upsertJobScheduler('task-reminder', { every: 60_000 }, { name: 'task-reminder' });
 await connection.set('worker:heartbeat', new Date().toISOString(), 'EX', 180);
-log.info({ zaloBot: bot?.mode ?? 'disabled', polling }, 'worker started');
+log.info({ zaloBot: bot?.mode ?? 'disabled', facebook: facebook?.mode ?? 'disabled', polling }, 'worker started');
 if (polling) void pollLoop();
 
 // Optional liveness endpoint for orchestration (Docker healthcheck, Playwright webServer).

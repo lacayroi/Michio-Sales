@@ -26,6 +26,16 @@ function extractPlugin(): string {
   return plugin;
 }
 
+function dockerCommand(): [string, ...string[]] {
+  if (process.platform !== 'win32') return ['docker'];
+  try {
+    execFileSync('docker', ['version'], { stdio: 'ignore' });
+    return ['docker'];
+  } catch {
+    return ['wsl', '-e', 'docker']; // -e: no shell, so the PHP code's $ survives
+  }
+}
+
 function runPhp(scenario: 'default' | 'whitelist'): { requests: Captured[]; failureBubbled: boolean } {
   // Files go in over stdin: no bind mount, so it works with Docker Desktop's file-sharing limits.
   const input = JSON.stringify({ plugin: extractPlugin(), harness: readFileSync(HARNESS, 'utf8'), scenario });
@@ -35,9 +45,11 @@ function runPhp(scenario: 'default' | 'whitelist'): { requests: Captured[]; fail
   const env = { ...process.env };
   const desktopSock = path.join(homedir(), '.docker/desktop/docker.sock');
   if (!env.DOCKER_HOST && !existsSync('/var/run/docker.sock') && existsSync(desktopSock)) env.DOCKER_HOST = `unix://${desktopSock}`;
+  // Windows machines whose Docker CLI lives only inside WSL: go through wsl.exe.
+  const [cmd, ...pre] = dockerCommand();
   const out = execFileSync(
-    'docker',
-    ['run', '--rm', '-i', '--network', 'none', 'php:8.3-cli', 'php', '-d', 'display_errors=stderr', '-r', bootstrap],
+    cmd,
+    [...pre, 'run', '--rm', '-i', '--network', 'none', 'php:8.3-cli', 'php', '-d', 'display_errors=stderr', '-r', bootstrap],
     { env, input, encoding: 'utf8', timeout: 120_000 },
   );
   return JSON.parse(out);
