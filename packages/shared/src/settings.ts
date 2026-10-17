@@ -26,6 +26,10 @@ export interface SettingValues {
   'zaloCompany.maxMessagesPerDay': number;
   'woo.syncIntervalHours': number;
   'calendar.holidaysConfirmedYears': number[];
+  /** Quy tắc tự động bật/tắt (SPEC 6.9). */
+  'automation.quoteFollowUp': boolean;
+  'automation.reorderReminder': boolean;
+  'automation.staleLead': boolean;
 }
 
 export const SETTING_DEFAULTS: SettingValues = {
@@ -61,6 +65,9 @@ export const SETTING_DEFAULTS: SettingValues = {
   'woo.syncIntervalHours': 6,
   // Năm mà Owner đã xác nhận lịch nghỉ lễ; năm hiện tại chưa có → nhắc trên trang chủ (SPEC 6.1).
   'calendar.holidaysConfirmedYears': [],
+  'automation.quoteFollowUp': true,
+  'automation.reorderReminder': true,
+  'automation.staleLead': true,
 };
 
 export type SettingKey = keyof SettingValues;

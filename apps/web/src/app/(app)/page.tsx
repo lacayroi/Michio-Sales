@@ -1,5 +1,5 @@
 import { can, scopeFilter } from '@michio/auth';
-import { managerHome, salesHome } from '@michio/core';
+import { getReport, managerHome, salesHome } from '@michio/core';
 import { prisma } from '@michio/db';
 import {
   BUSINESS_MODEL_LABELS, formatDate, formatDateTime, formatVnd, INTEREST_CATEGORY_LABELS, LEAD_SOURCE_LABELS, ORDER_BAND_LABELS,
@@ -8,6 +8,8 @@ import { CalendarCheck, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { LifecycleBadge, PriorityBadge } from '@/components/badges';
+import { ColumnChart } from '@/components/column-chart';
+import { formatCell, ReportGrid } from '@/components/report-table';
 import { Countdown } from '@/components/countdown';
 import { AcceptReturnButtons } from '@/components/lead-actions';
 import { PhoneActions } from '@/components/phone-actions';
@@ -166,7 +168,15 @@ async function SalesHome({ user }: { user: CurrentUser }) {
 }
 
 async function ManagerHome({ user }: { user: CurrentUser }) {
-  const d = await managerHome(serviceContext(user));
+  const ctx = serviceContext(user);
+  const [d, overview, comparison, revenue] = await Promise.all([
+    managerHome(ctx),
+    can(user.role, 'report.view') ? getReport(ctx, 'overview') : Promise.resolve(null),
+    can(user.role, 'report.view') ? getReport(ctx, 'sales-comparison') : Promise.resolve(null),
+    can(user.role, 'report.view') ? getReport(ctx, 'revenue', { groupBy: 'day' }) : Promise.resolve(null),
+  ]);
+  const kpi = (label: string) => overview?.summary.find((s) => s.label === label);
+  const show = (label: string) => { const k = kpi(label); return k ? formatCell(k.value, k.type) : '—'; };
   const totalToday = d.bySource.reduce((s, x) => s + x.count, 0);
   const canAct = can(user.role, 'lead.assign');
   return (
@@ -229,7 +239,26 @@ async function ManagerHome({ user }: { user: CurrentUser }) {
           )}
         </Section>
       </div>
-      <p className="text-sm text-muted-foreground">So sánh 3 sales, phễu và báo cáo chi tiết có ở giai đoạn M5.</p>
+      {overview && (
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <Kpi label="FRT trung vị tháng" value={show('FRT trung vị (phút)')} hint={`P90 ${show('FRT P90 (phút)')}`} href="/bao-cao?tab=sla" />
+          <Kpi label="Tỷ lệ chốt tháng" value={show('Tỷ lệ chốt')} href="/bao-cao?tab=funnel" />
+          <Kpi label="% chỉ tiêu tháng" value={show('% chỉ tiêu tháng')} hint={`Khách mới ${show('Doanh số khách mới')}`} href="/bao-cao?tab=targets" />
+          <Kpi label="Khách có nguy cơ" value={show('Khách có nguy cơ')} hint={`Ngủ đông ${show('Khách ngủ đông')}`} href="/khach-can-cham?group=at_risk" />
+        </div>
+      )}
+      {revenue && (
+        <Section title="Doanh số tháng này theo ngày" action={<Link className="text-sm font-medium text-primary hover:underline dark:text-brand-green" href="/bao-cao?tab=revenue">Báo cáo doanh số →</Link>}>
+          <div className="rounded-xl border border-border bg-surface p-4" data-testid="revenue-chart">
+            <ColumnChart title="Doanh số theo ngày" valueType="money" data={revenue.rows.map((r) => ({ label: String(r.period).split('-').reverse().join('/'), tick: String(r.period).slice(-2), value: Number(r.revenue), detail: [`${r.orders} đơn`] }))} />
+          </div>
+        </Section>
+      )}
+      {comparison && (
+        <Section title="So sánh sales tháng này" action={<Link className="text-sm font-medium text-primary hover:underline dark:text-brand-green" href="/bao-cao?tab=sales-comparison">Chi tiết →</Link>}>
+          <ReportGrid report={comparison} />
+        </Section>
+      )}
     </div>
   );
 }

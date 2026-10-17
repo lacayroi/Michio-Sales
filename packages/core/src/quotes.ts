@@ -282,7 +282,7 @@ export async function sendQuote(ctx: ServiceContext, quoteId: string, raw: z.inp
       const w = await conversationWindow(ctx.db, conv, now);
       if (!w.ok) throw new DomainError('INVALID_STATE', `${w.reason} Hãy tải PDF và gửi qua Zalo.`);
     }
-    const settings = await getSettings(tx, ctx.orgId, ['quote.validDays', 'quote.followUpBusinessDays']);
+    const settings = await getSettings(tx, ctx.orgId, ['quote.validDays', 'quote.followUpBusinessDays', 'automation.quoteFollowUp']);
     const firstSend = q.status === 'DRAFT';
     const updated = await tx.quote.update({
       where: { id: q.id },
@@ -294,7 +294,7 @@ export async function sendQuote(ctx: ServiceContext, quoteId: string, raw: z.inp
       // "Follow-up báo giá" after N working days (6.6); autoRuleKey keeps it to exactly one task.
       const cal = await loadCalendar(tx, ctx.orgId);
       const customer = await tx.customer.findUniqueOrThrow({ where: { id: q.customerId }, select: { shopName: true, contactName: true } });
-      await tx.task.createMany({
+      if (settings['automation.quoteFollowUp']) await tx.task.createMany({
         data: [{
           orgId: ctx.orgId, title: `Follow-up báo giá ${q.code} — ${customer.shopName ?? customer.contactName}`, type: 'FOLLOW_UP',
           dueAt: addBusinessDays(now, settings['quote.followUpBusinessDays'], cal), assigneeId: q.ownerId, createdById: actor.id,

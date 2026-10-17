@@ -1,5 +1,28 @@
 # Changelog
 
+## M5 — Chăm khách & báo cáo (17/10/2026)
+
+**Chăm khách sỉ** (6.5, 6.8, 6.9)
+- Job `customer-lifecycle` 01:00: tự chuyển khách sang **Có nguy cơ** (quá 1,5 chu kỳ) / **Ngủ đông** (quá 90 ngày), báo sales phụ trách.
+- Job `reorder-reminder` 07:30 T2–T7: tạo việc **Nhắc tái đặt hàng** trước ngày khách thường đặt lại 3 ngày, kèm đơn gần nhất và 5 mặt hàng hay mua; **đúng một việc mỗi chu kỳ**; thông báo web + Zalo.
+- Job `stale-lead` mỗi giờ: cảnh báo lead đang xử lý quá 5 ngày không có hoạt động.
+- Cài đặt → **Quy tắc tự động**: bật/tắt follow-up báo giá, nhắc tái đặt, cảnh báo lead im lặng; chỉnh hiệu lực báo giá, mức giảm thêm tối đa, chu kỳ mặc định, số ngày nhắc trước, ngủ đông, lead im lặng.
+- **S8 Khách cần chăm**: quá hạn đặt lại / sắp đến hạn / có nguy cơ / ngủ đông, sắp theo giá trị đơn trung bình, nút gọi / Zalo / tạo báo giá, việc nhắc đang mở (`GET /customers/attention`).
+- **S11 Việc của tôi**: Quá hạn / Hôm nay / Sắp tới / Đã xong; thêm việc, xong, dời hạn, hủy (`/tasks` CRUD, `POST /tasks/:id/complete`).
+
+**Báo cáo** (6.11, §8 `/reports/*`): chỉ số định nghĩa một chỗ (`metrics.ts`: FRT giờ làm việc trung vị & P90, nhận đúng hạn, tỷ lệ chốt, doanh số, tỷ lệ quay lại theo quý).
+- **S12** 9 báo cáo: Tổng quan, Nguồn, Phễu (theo nguồn / mô hình / mức nhập), So sánh sales (lead nhận, FRT, hoạt động, báo giá, đơn, doanh số, khách mới, tỷ lệ chốt, % chỉ tiêu), Doanh số (ngày/tuần/tháng, khách mới vs cũ, có biểu đồ), Khách hàng, Sản phẩm bán chạy, Lý do thua, Tốc độ phản hồi; lọc thời gian / sales / nguồn / mô hình / tỉnh; **xuất Excel** đúng bộ lọc. Sales chỉ xem số của mình; kế toán xem Doanh số & Sản phẩm.
+- **Chỉ tiêu tháng** cho từng sales (doanh số, khách mới, số đơn) kèm thực đạt (`GET/PUT /targets`).
+- **S3 Trang chủ Owner**: thêm FRT tháng, tỷ lệ chốt, % chỉ tiêu, khách có nguy cơ, biểu đồ doanh số theo ngày, bảng so sánh sales.
+
+**S14 Chuyển giao** (6.10): wizard 3 bước — chọn người → xem số khách / lead / cơ hội / báo giá / việc → giao một người hoặc chia xoay vòng, tùy chọn khóa tài khoản; chạy nền có tiến độ (`POST /transfers`, `GET /transfers/:id`), mọi bản ghi có audit, người nhận nhận danh sách khách qua Zalo Bot.
+
+**S19 Audit log**: lọc theo đối tượng, hành động, kênh, ngày, mã bản ghi; hiện trước → sau (`GET /audit-logs`).
+
+**Kiểm thử**: +4 unit chỉ số, +8 integration (**báo cáo khớp fixture tính tay**: tổng quan, phễu, so sánh sales, SLA, doanh số, khách, sản phẩm, lý do thua, phạm vi Sales/Support, Excel; chỉ tiêu; **nhắc tái đặt tạo đúng hạn và không trùng**; lifecycle; lead im lặng; **chuyển giao 1.000 bản ghi < 1 phút** với 1.001 dòng audit), +3 e2e (Owner: trang chủ, 9 báo cáo, Excel, chỉ tiêu; Sales: khách cần chăm, việc của tôi; chuyển giao + audit log + thông báo người nhận).
+
+**Dời sang M6**: email báo cáo tuần cho Owner (cùng hạ tầng email với quên mật khẩu — D-043).
+
 ## M4 — Sản phẩm, báo giá, đơn sỉ (17/10/2026)
 
 **WooCommerce** (SPEC 5.6, đối chiếu tài liệu — D-036): `packages/integrations/woocommerce` (REST wc/v3, khóa Read, phân trang, `modified_after`, chữ ký webhook). Job `woo-product-sync`: lần đầu toàn bộ, sau đó phần thay đổi mỗi 6 giờ (`woo.syncIntervalHours`), nút "Đồng bộ ngay", webhook `POST /api/v1/webhooks/woocommerce`. Lấy mã, tên, danh mục, giá lẻ, ảnh, link, còn/hết hàng, thương hiệu; sản phẩm thiếu SKU → `woo-{id}` + cờ "cần bổ sung mã". Cài đặt → **WooCommerce** (khóa lưu mã hóa). Chế độ demo có catalog mô phỏng.

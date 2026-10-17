@@ -22,7 +22,14 @@ export const QUEUES = {
   channelOutbound: 'channel-outbound',
   quotePdf: 'quote-pdf',
   wooSync: 'woo-product-sync',
+  transfer: 'transfer',
 } as const;
+
+export interface TransferJobData {
+  orgId: string;
+  actorId: string;
+  input: import('./transfers').TransferInput;
+}
 
 export interface WooSyncJob {
   orgId: string;

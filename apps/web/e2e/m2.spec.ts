@@ -20,7 +20,10 @@ async function say(page: Page, text: string) {
   await sim.getByLabel('Tin nhắn gửi bot').fill(text);
   await sim.getByRole('button', { name: 'Gửi' }).click();
   await expect(sim.locator('[data-from="bot"]')).not.toHaveCount(before);
-  return (await sim.locator('[data-from="bot"]').last().textContent()) ?? '';
+  // All bot messages since sending: unrelated notifications (e.g. the SLA sweeper on seeded leads) may
+  // arrive in between, so the reply is not always the last bubble.
+  const all = await sim.locator('[data-from="bot"]').allTextContents();
+  return all.slice(before).join('\n');
 }
 
 const logout = (page: Page) => page.getByRole('button', { name: 'Đăng xuất' }).click();

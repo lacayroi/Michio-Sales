@@ -226,3 +226,32 @@ Deal được tạo ở lần đổi giai đoạn đầu (bot `TRANGTHAI`, thẻ
 - `Organization.profile` (D-027 hẹn ở M4): tên, địa chỉ, hotline, Zalo, website, email, MST, tài khoản ngân hàng, **điều kiện mặc định** in trên báo giá. Màn Cài đặt → Thông tin công ty (Owner/Manager).
 - Cấp khách / bảng giá gán riêng chỉ Owner/Manager sửa (`priceList.manage`) trên hồ sơ khách. Tự xếp cấp theo doanh số 90 ngày (6.5) chưa làm vì tên và ngưỡng cấp còn `[CẦN XÁC NHẬN]`.
 - Chu kỳ tái đặt sửa tay → khóa (`reorderCycleLocked`); "Tự tính" mở khóa.
+
+## D-042 · Định nghĩa chỉ số và báo cáo (M5)
+- Mọi công thức nằm trong `packages/core/src/metrics.ts` (SPEC 6.11), có unit test; báo cáo, trang chủ Owner và tổng kết sáng dùng chung.
+- **FRT** tính bằng phút làm việc (`businessMinutesBetween`), chỉ với lead đã liên hệ. **P90** theo nearest-rank.
+- **Nhận đúng hạn**: mẫu số = assignment tự động (xoay vòng, trọng số, ít lead, sales phụ trách, sales cũ) đã có kết quả; assignment còn `PENDING` mà chưa tới hạn thì bỏ ra (chưa biết đúng hay trễ), quá hạn thì tính là trễ.
+- **Phễu / Nguồn** theo nhóm lead **tạo trong kỳ** (cohort): đã liên hệ = có `firstContactAt` hoặc đã đi xa hơn; báo giá = có báo giá đã gửi hoặc deal ở/qua giai đoạn "Đã gửi báo giá"; tỷ lệ chốt = thắng / (thắng + thua) của nhóm đó. Tỷ lệ chốt ở Tổng quan & So sánh sales theo **ngày đóng deal** như SPEC.
+- **Doanh số khách mới** = đơn trùng `firstOrderAt` của khách. **Tỷ lệ quay lại** tính cho quý chứa ngày cuối kỳ.
+- Bộ lọc `nguồn` chỉ áp cho chỉ số theo lead/deal (đơn không gắn nguồn). SALES luôn chỉ thấy số của mình (bỏ qua `ownerId` truyền lên); SUPPORT chỉ xem/xuất **Doanh số** và **Sản phẩm** (§3 "đơn hàng").
+- Mỗi báo cáo trả cùng một dạng bảng (`summary`, `columns`, `rows`) nên màn hình và Excel dùng một đường; Excel ghi kỳ báo cáo và các ô tổng.
+- Biểu đồ: một chuỗi (doanh số theo ngày) dùng `--primary` (#007F3E sáng / #00A651 tối, đã kiểm bằng validator của skill dataviz), cột ≤ 24px, đầu bo 4px, lưới mảnh, tooltip khi rê; bảng số liệu luôn có cạnh biểu đồ.
+
+## D-043 · Job chăm khách (M5)
+- `customer-lifecycle` 01:00: tính lại AT_RISK / DORMANT theo thời gian (đơn mới đã được tính ngay ở M4). Khách vừa thành AT_RISK → báo sales phụ trách; Owner thấy số này trong tổng kết 08:00.
+- `reorder-reminder` 07:30 T2–T7: task REORDER cho sales phụ trách khi `nextReorderAt − reorder.remindBeforeDays` đã tới; hạn = thời điểm đó (đưa vào giờ làm việc), ghi chú có đơn gần nhất + **5 mặt hàng mua nhiều nhất**; `autoRuleKey = reorder:{khách}:{ngày nextReorderAt}` → mỗi chu kỳ đúng một task dù job chạy lại. Bỏ qua khách DORMANT và sales đã nghỉ việc. Thông báo theo mẫu 5.5 nhưng dùng `XONG <mã việc>` (khách đã mua thường không còn lead mở nên `HEN <mã lead>` không áp dụng).
+- `stale-lead` mỗi giờ: lead đang xử lý không có hoạt động quá `lead.staleDays` → báo sales một lần cho mỗi giai đoạn im lặng.
+- Ba quy tắc bật/tắt bằng setting mới `automation.quoteFollowUp`, `automation.reorderReminder`, `automation.staleLead` (mặc định bật), sửa ở Cài đặt → Quy tắc tự động cùng các ngưỡng §7.1.
+- Báo cáo tuần qua email (`weekly-report`, §9) **dời sang M6** cùng hạ tầng email (quên mật khẩu, D-004).
+
+## D-044 · Chuyển giao (M5)
+- Không có bảng Transfer trong §7: như import (D-018), job BullMQ `transfer` giữ tiến độ & kết quả 7 ngày (`GET /transfers/:id`).
+- Đơn vị chuyển là **khách**: lead đang xử lý, deal mở, báo giá chưa chốt, việc còn mở đi theo người nhận khách đó; xoay vòng chia đều theo thứ tự tạo khách. Lead **đang chờ nhận** không chuyển tay mà trả về engine chia lead (loại người cũ).
+- Lead chuyển tay tạo assignment `TRANSFER` ở trạng thái đã nhận (D-016). Đơn đã ghi nhận giữ nguyên sales cũ để doanh số lịch sử đúng người.
+- Chạy theo khối 250 bản ghi/transaction, mỗi bản ghi một dòng AuditLog + một dòng tổng; 1.000 bản ghi ~2 giây trên máy dev. Tùy chọn khóa tài khoản người chuyển ngay (không áp dụng cho Owner). Người nhận được thông báo kèm danh sách khách (web + Zalo Bot).
+
+## D-045 · Chỉ tiêu và các màn hình M5
+- Chỉ tiêu tháng (`/targets`, tab Báo cáo → Chỉ tiêu): Owner/Manager đặt doanh số, khách mới, số đơn; thực đạt tính từ đơn không hủy và `firstOrderAt`. Sales xem của mình.
+- Việc của tôi (S11): Owner/Manager mặc định xem việc của chính mình (`?mine=0` xem tất cả trong phạm vi). Dời hạn, hủy, hoàn thành; mọi thay đổi có audit.
+- Audit log (S19) chỉ đọc, lọc theo đối tượng/hành động/kênh/ngày, hiện thay đổi trước → sau.
+- Mọi màn hình trong §10.2 đã có giao diện thật; bỏ component "đang xây dựng".

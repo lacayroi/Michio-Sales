@@ -145,3 +145,73 @@ export async function remindDueTasks(ctx: ServiceContext) {
   }
   return { reminded };
 }
+
+// ---------- S11 Việc của tôi (M5) ----------
+
+export const TaskListFilters = z.object({
+  /** overdue / today / upcoming / done — the S11 tabs; empty = all open. */
+  bucket: z.enum(['overdue', 'today', 'upcoming', 'done']).optional(),
+  assigneeId: z.string().optional(),
+  type: z.enum(TASK_TYPES).optional(),
+  customerId: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+});
+
+export async function listTasks(ctx: ServiceContext, raw: z.input<typeof TaskListFilters> = {}) {
+  const actor = requireActor(ctx);
+  const f = TaskListFilters.parse(raw);
+  const now = ctx.now();
+  const today = vnDayRange(now);
+  const base = { ...scopeFilter(actor, 'task'), ...(f.assigneeId ? { assigneeId: f.assigneeId } : {}), ...(f.type ? { type: f.type } : {}), ...(f.customerId ? { customerId: f.customerId } : {}) };
+  const buckets = {
+    overdue: { status: 'TODO' as const, dueAt: { lt: now } },
+    today: { status: 'TODO' as const, dueAt: { gte: now, lt: today.end } },
+    upcoming: { status: 'TODO' as const, dueAt: { gte: today.end } },
+    done: { status: { in: ['DONE' as const, 'CANCELLED' as const] }, updatedAt: { gte: new Date(now.getTime() - 14 * 86_400_000) } },
+  };
+  const include = {
+    customer: { select: { id: true, contactName: true, shopName: true, phone: true } },
+    lead: { select: { id: true, code: true } },
+    quote: { select: { id: true, code: true } },
+    assignee: { select: { id: true, fullName: true } },
+  } as const;
+  const [items, counts] = await Promise.all([
+    ctx.db.task.findMany({
+      where: { ...base, ...(f.bucket ? buckets[f.bucket] : { status: 'TODO' }) },
+      orderBy: f.bucket === 'done' ? { updatedAt: 'desc' } : { dueAt: 'asc' },
+      take: f.limit,
+      include,
+    }),
+    Promise.all((['overdue', 'today', 'upcoming'] as const).map((b) => ctx.db.task.count({ where: { ...base, ...buckets[b] } }))),
+  ]);
+  return { items, counts: { overdue: counts[0]!, today: counts[1]!, upcoming: counts[2]! } };
+}
+
+export const TaskUpdateInput = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  type: z.enum(TASK_TYPES).optional(),
+  dueAt: z.coerce.date().optional(),
+  note: z.string().trim().max(2000).nullable().optional(),
+  status: z.enum(['TODO', 'CANCELLED']).optional(),
+  assigneeId: z.string().optional(),
+});
+
+/** Reschedule / edit / cancel / reassign (reassigning to someone else needs ALL scope). */
+export async function updateTask(ctx: ServiceContext, taskId: string, raw: z.input<typeof TaskUpdateInput>) {
+  const actor = requireActor(ctx);
+  const input = TaskUpdateInput.parse(raw);
+  return ctx.db.$transaction(async (tx) => {
+    const task = await tx.task.findFirst({ where: { id: taskId, orgId: ctx.orgId } });
+    if (!task || !authorize(actor, 'task.view', task)) throw notFound('việc');
+    assertAuthorized(actor, 'task.manage', task);
+    if (input.assigneeId && input.assigneeId !== task.assigneeId) assertAuthorized(actor, 'task.manage', { orgId: ctx.orgId, assigneeId: input.assigneeId });
+    if (task.status === 'DONE') throw new DomainError('INVALID_STATE', 'Việc đã hoàn thành');
+    const updated = await tx.task.update({ where: { id: task.id }, data: { ...input, ...(input.status === 'CANCELLED' ? { completedAt: ctx.now() } : {}) } });
+    await recordAudit(tx, {
+      orgId: ctx.orgId, actorId: actor.id, via: ctx.via, action: input.status === 'CANCELLED' ? 'task.cancel' : 'task.update', entityType: 'Task', entityId: task.id,
+      before: { title: task.title, dueAt: task.dueAt.toISOString(), status: task.status, assigneeId: task.assigneeId },
+      after: { title: updated.title, dueAt: updated.dueAt.toISOString(), status: updated.status, assigneeId: updated.assigneeId }, ip: ctx.ip,
+    });
+    return updated;
+  }, TX_OPTIONS);
+}
